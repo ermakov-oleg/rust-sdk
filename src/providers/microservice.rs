@@ -31,14 +31,14 @@ struct SettingKey {
 
 #[derive(Deserialize, Debug)]
 struct RuntimeSettingsResponse {
-    settings: Vec<Box<Setting>>,
-    deleted: Vec<Box<SettingKey>>,
+    settings: Vec<Setting>,
+    deleted: Vec<SettingKey>,
     version: String,
 }
 
 #[async_trait]
 impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
-    async fn get_settings(&self) -> Result<HashMap<String, Vec<Box<SettingsService>>>> {
+    async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
         let url = format!(
             "{}/v2/get-runtime-settings/?runtime=python&version=0",
             self.base_url
@@ -56,16 +56,13 @@ impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
     }
 }
 
-fn prepare_settings(settings: Vec<Box<Setting>>) -> HashMap<String, Vec<Box<SettingsService>>> {
+fn prepare_settings(settings: Vec<Setting>) -> HashMap<String, Vec<SettingsService>> {
     let mut settings_dict = HashMap::new();
     for s in settings {
         let key = s.key.clone();
         let ss = SettingsService::new(s);
 
-        settings_dict
-            .entry(key.into())
-            .or_insert_with(Vec::new)
-            .push(Box::new(ss));
+        settings_dict.entry(key).or_insert_with(Vec::new).push(ss);
     }
     settings_dict
         .values_mut()
@@ -99,27 +96,27 @@ mod tests {
     fn test_prepare_settings_expected_settings_sort_order() {
         // arrange
         let raw_settings = vec![
-            Box::new(Setting {
+            Setting {
                 key: "foo".to_string(),
                 priority: 100,
                 runtime: "rust".to_string(),
                 filters: None,
                 value: None,
-            }),
-            Box::new(Setting {
+            },
+            Setting {
                 key: "foo".to_string(),
                 priority: 0,
                 runtime: "rust".to_string(),
                 filters: None,
                 value: None,
-            }),
-            Box::new(Setting {
+            },
+            Setting {
                 key: "foo".to_string(),
                 priority: 110,
                 runtime: "rust".to_string(),
                 filters: None,
                 value: None,
-            }),
+            },
         ];
 
         // act

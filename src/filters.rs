@@ -3,7 +3,7 @@ use crate::entities::{Filter, Setting};
 use regex::Regex;
 
 pub trait RSFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, _ctx: &Context) -> bool {
         false
     }
 }
@@ -68,10 +68,7 @@ impl RSFilter for PatternRSFilter {
 
 fn make_rs_filter(f: &Filter) -> RSFilterImpl {
     fn _mk_pattern_flt(ctx_attr: &str, pattern: String) -> RSFilterImpl {
-        RSFilterImpl::Filter(Box::new(PatternRSFilter::new(
-            ctx_attr.into(),
-            pattern.into(),
-        )))
+        RSFilterImpl::Filter(Box::new(PatternRSFilter::new(ctx_attr.into(), pattern)))
     }
 
     match f.name.as_ref() {
@@ -91,17 +88,20 @@ pub struct SettingsService {
 }
 
 impl SettingsService {
-    pub fn new(setting: Box<Setting>) -> Self {
+    pub fn new(setting: Setting) -> Self {
         let filters = match &setting.filters {
-            Some(f) => f.into_iter().map(make_rs_filter).collect(),
+            Some(f) => f.iter().map(make_rs_filter).collect(),
             None => vec![],
         };
 
-        SettingsService { setting, filters }
+        SettingsService {
+            setting: Box::new(setting),
+            filters,
+        }
     }
 
     pub fn is_suitable(&self, ctx: &Context) -> bool {
-        (&self.filters).into_iter().all(|filter| {
+        (&self.filters).iter().all(|filter| {
             let RSFilterImpl::Filter(flt) = filter;
             flt.check(ctx)
         })
@@ -130,13 +130,13 @@ mod tests {
     #[test]
     fn test_settings_service_is_suitable_without_filters() {
         // arrange
-        let ss = SettingsService::new(Box::new(Setting {
+        let ss = SettingsService::new(Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
             filters: None,
             value: Some("foo".to_string()),
-        }));
+        });
 
         // act && assert
         assert!(ss.is_suitable(&_make_ctx()));
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn test_settings_service_not_suitable_with_unknown_filter() {
         // arrange
-        let ss = SettingsService::new(Box::new(Setting {
+        let ss = SettingsService::new(Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
@@ -154,7 +154,7 @@ mod tests {
                 value: "test".to_string(),
             }]),
             value: Some("foo".to_string()),
-        }));
+        });
 
         // act && assert
         assert!(!ss.is_suitable(&_make_ctx()));
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn test_settings_service_not_suitable_filter_for_another_application() {
         // arrange
-        let ss = SettingsService::new(Box::new(Setting {
+        let ss = SettingsService::new(Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
@@ -172,7 +172,7 @@ mod tests {
                 value: "python-mcs-test".to_string(),
             }]),
             value: Some("foo".to_string()),
-        }));
+        });
 
         // act && assert
         assert!(!ss.is_suitable(&_make_ctx()));
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn test_settings_service_is_suitable_application_filter() {
         // arrange
-        let ss = SettingsService::new(Box::new(Setting {
+        let ss = SettingsService::new(Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
@@ -190,7 +190,7 @@ mod tests {
                 value: "test-rust".to_string(),
             }]),
             value: Some("foo".to_string()),
-        }));
+        });
 
         // act && assert
         assert!(ss.is_suitable(&_make_ctx()));
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_settings_service_is_suitable_url_filter() {
         // arrange
-        let ss = SettingsService::new(Box::new(Setting {
+        let ss = SettingsService::new(Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
@@ -208,7 +208,7 @@ mod tests {
                 value: "some-url".to_string(),
             }]),
             value: Some("foo".to_string()),
-        }));
+        });
 
         let mut ctx = _make_ctx();
         ctx.url = Some("some-url".to_string());

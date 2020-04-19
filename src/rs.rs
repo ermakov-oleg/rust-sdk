@@ -12,7 +12,7 @@ use crate::providers::RuntimeSettingsProvider;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct RuntimeSettings {
-    settings: HashMap<String, Vec<Box<SettingsService>>>,
+    settings: HashMap<String, Vec<SettingsService>>,
     settings_provider: Box<dyn RuntimeSettingsProvider>,
 }
 
@@ -45,13 +45,13 @@ impl RuntimeSettings {
     {
         let value = match self.settings.get(key) {
             Some(vss) => vss
-                .into_iter()
+                .iter()
                 .find(|f| f.is_suitable(ctx))
                 .and_then(|val| val.setting.value.clone()),
             None => None,
         };
 
-        value.map_or(None, |v| {
+        value.and_then(|v| {
             serde_json::from_str(&v)
                 .map_err(|err| {
                     eprintln!("Error when deserialize value {}", err);
