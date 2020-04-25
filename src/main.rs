@@ -35,10 +35,10 @@ async fn main() -> Result<()> {
         context: Default::default(),
     };
 
-    let key = "postgres_connection/qa_tests_manager";
-    // let key = "isNewPublishTerms.Enabled";
+    // let key = "postgres_connection/qa_tests_manager";
+    let key = "CALLTRACKING_CORE_TIMEOUT";
 
-    let val: Option<PGConnectionString> = runtime_settings.get(key, &ctx);
+    let val: Option<u32> = runtime_settings.get(key, &ctx);
     // let val: Option<String> = runtime_settings.get(key, &ctx);
 
     println!("Settings {}:{:#?}", key, val);

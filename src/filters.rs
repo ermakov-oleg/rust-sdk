@@ -9,7 +9,7 @@ pub trait RSFilter {
 }
 
 pub enum RSFilterImpl {
-    Filter(Box<dyn RSFilter>),
+    Filter(Box<dyn RSFilter + Sync + Send>),
 }
 
 struct PatternRSFilter {

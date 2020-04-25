@@ -37,6 +37,22 @@ impl RuntimeSettings {
         Ok(())
     }
 
+    pub async fn refresh_with_settings_provider(
+        &mut self,
+        settings_provider: &mut dyn RuntimeSettingsProvider,
+    ) -> Result<()> {
+        let new_settings = match settings_provider.get_settings().await {
+            Ok(r) => r,
+            Err(err) => {
+                eprintln!("Error: Could not update settings {}", err);
+                return Ok(());
+            }
+        };
+        self.settings = new_settings;
+        println!("Settings refreshed");
+        Ok(())
+    }
+
     pub fn get<K: ?Sized, V>(&self, key: &K, ctx: &Context) -> Option<V>
     where
         String: Borrow<K>,
@@ -58,5 +74,78 @@ impl RuntimeSettings {
                 })
                 .ok()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entities::Setting;
+    use async_trait::async_trait;
+    use serde::Deserialize;
+
+    type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+    fn _make_ctx() -> Context {
+        Context {
+            application: "test-rust".to_string(),
+            server: "test-server".to_string(),
+            environment: Default::default(),
+            host: None,
+            url: None,
+            url_path: None,
+            email: None,
+            ip: None,
+            context: Default::default(),
+        }
+    }
+
+    struct TestSettingsProvider {
+        settings: HashMap<String, Vec<SettingsService>>,
+    }
+
+    #[async_trait]
+    impl RuntimeSettingsProvider for TestSettingsProvider {
+        async fn get_settings(&mut self) -> Result<HashMap<String, Vec<SettingsService>>> {
+            let settings = self.settings.drain();
+            Ok(settings.collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_refresh() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct SomeData {
+            key: String,
+        }
+
+        let mut settings = HashMap::new();
+        settings.insert(
+            "TEST_KEY".to_string(),
+            vec![SettingsService::new(Setting {
+                key: "TEST_KEY".to_string(),
+                priority: 0,
+                runtime: "rust".to_string(),
+                filters: None,
+                value: Some("{\"key\": \"value\"}".into()),
+            })],
+        );
+        let settings_provider = TestSettingsProvider { settings };
+        let mut runtime_settings = RuntimeSettings::new(settings_provider);
+
+        runtime_settings.refresh().await.unwrap();
+
+        let key = "TEST_KEY";
+
+        // act
+        let val: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
+
+        // assert
+        assert_eq!(
+            val,
+            Some(SomeData {
+                key: "value".to_string()
+            })
+        );
     }
 }
