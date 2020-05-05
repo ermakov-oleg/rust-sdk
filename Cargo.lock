@@ -62,6 +62,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
+name = "cian-settings"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hyper",
+ "log",
+ "pretty_env_logger",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -457,21 +472,6 @@ name = "regex-syntax"
 version = "0.6.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fe5bd57d1d7414c6b5ed48563a2c855d995ff777729dcd91c369ec7fea395ae"
-
-[[package]]
-name = "runtime-settings"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "hyper",
- "log",
- "pretty_env_logger",
- "regex",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "ryu"

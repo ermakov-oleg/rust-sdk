@@ -1,5 +1,5 @@
 [package]
-name = "runtime-settings"
+name = "cian-settings"
 version = "0.1.0"
 authors = ["o.ermakov <o.ermakov@cian.ru>"]
 edition = "2018"

@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 
 use bytes::buf::BufExt;
+use bytes::Buf;
 use hyper::Client;
 use serde::Deserialize;
 
@@ -10,6 +11,8 @@ use async_trait::async_trait;
 use crate::entities::Setting;
 use crate::filters::SettingsService;
 use crate::RuntimeSettingsProvider;
+use core::fmt;
+use std::error;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -40,11 +43,10 @@ struct RuntimeSettingsResponse {
 impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
     async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
         let url = format!(
-            "{}/v2/get-runtime-settings/?runtime=python&version=0",
+            "{}/v2/get-cian-settings/?runtime=python&version=0",
             self.base_url
         )
-        .parse()
-        .unwrap();
+        .parse()?;
         println!("Get runtime settings");
         let rs_response: RuntimeSettingsResponse = fetch_json(url).await?;
 
@@ -70,17 +72,43 @@ fn prepare_settings(settings: Vec<Setting>) -> HashMap<String, Vec<SettingsServi
     settings_dict
 }
 
+#[derive(Debug, Clone)]
+struct HttpError {
+    error: String,
+}
+
+impl fmt::Display for HttpError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid http request {}", self.error)
+    }
+}
+
+impl error::Error for HttpError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
 async fn fetch_json<T>(url: hyper::Uri) -> Result<T>
 where
     T: serde::de::DeserializeOwned,
 {
+    // Create client
     let client = Client::new();
 
     // Fetch the url...
     let res = client.get(url).await?;
 
+    let (parts, body) = res.into_parts();
+
     // asynchronously aggregate the chunks of the body
-    let body = hyper::body::aggregate(res).await?;
+    let body = hyper::body::aggregate(body).await?;
+
+    if !parts.status.is_success() {
+        return Err(Box::new(HttpError {
+            error: String::from_utf8_lossy(body.bytes()).into_owned(),
+        }));
+    }
 
     // try to parse as json with serde_json
     let result = serde_json::from_reader(body.reader())?;
