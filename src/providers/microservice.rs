@@ -38,7 +38,7 @@ struct RuntimeSettingsResponse {
 
 #[async_trait]
 impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
-    async fn get_settings(&mut self) -> Result<HashMap<String, Vec<SettingsService>>> {
+    async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
         let url = format!(
             "{}/v2/get-runtime-settings/?runtime=python&version=0",
             self.base_url

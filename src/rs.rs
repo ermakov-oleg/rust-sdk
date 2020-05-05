@@ -4,6 +4,7 @@ use std::hash::Hash;
 use std::iter::Iterator;
 
 use serde::de::DeserializeOwned;
+use std::sync::RwLock;
 
 use crate::context::Context;
 use crate::filters::SettingsService;
@@ -12,34 +13,36 @@ use crate::providers::RuntimeSettingsProvider;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct RuntimeSettings {
-    settings: HashMap<String, Vec<SettingsService>>,
+    settings: RwLock<HashMap<String, Vec<SettingsService>>>,
     settings_provider: Box<dyn RuntimeSettingsProvider>,
 }
 
 impl RuntimeSettings {
     pub fn new<T: RuntimeSettingsProvider + 'static>(settings_provider: T) -> Self {
         Self {
-            settings: HashMap::new(),
+            settings: RwLock::new(HashMap::new()),
             settings_provider: Box::new(settings_provider),
         }
     }
 
-    pub async fn refresh(&mut self) -> Result<()> {
+    pub async fn refresh(&self) -> Result<()> {
         let new_settings = match self.settings_provider.get_settings().await {
             Ok(r) => r,
             Err(err) => {
                 eprintln!("Error: Could not update settings {}", err);
-                return Ok(());
+                return Err(err);
             }
         };
-        self.settings = new_settings;
+
+        let mut settings_guard = self.settings.write().unwrap();
+        *settings_guard = new_settings;
         println!("Settings refreshed");
         Ok(())
     }
 
     pub async fn refresh_with_settings_provider(
-        &mut self,
-        settings_provider: &mut dyn RuntimeSettingsProvider,
+        &self,
+        settings_provider: &dyn RuntimeSettingsProvider,
     ) -> Result<()> {
         let new_settings = match settings_provider.get_settings().await {
             Ok(r) => r,
@@ -48,7 +51,8 @@ impl RuntimeSettings {
                 return Ok(());
             }
         };
-        self.settings = new_settings;
+        let mut settings_guard = self.settings.write().unwrap();
+        *settings_guard = new_settings;
         println!("Settings refreshed");
         Ok(())
     }
@@ -59,7 +63,8 @@ impl RuntimeSettings {
         K: Hash + Eq,
         V: DeserializeOwned,
     {
-        let value = match self.settings.get(key) {
+        let settings_guard = self.settings.read().unwrap();
+        let value = match settings_guard.get(key) {
             Some(vss) => vss
                 .iter()
                 .find(|f| f.is_suitable(ctx))
@@ -83,6 +88,7 @@ mod tests {
     use crate::entities::Setting;
     use async_trait::async_trait;
     use serde::Deserialize;
+    use std::sync::Mutex;
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -101,13 +107,14 @@ mod tests {
     }
 
     struct TestSettingsProvider {
-        settings: HashMap<String, Vec<SettingsService>>,
+        settings: Mutex<HashMap<String, Vec<SettingsService>>>,
     }
 
     #[async_trait]
     impl RuntimeSettingsProvider for TestSettingsProvider {
-        async fn get_settings(&mut self) -> Result<HashMap<String, Vec<SettingsService>>> {
-            let settings = self.settings.drain();
+        async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
+            let mut guard = self.settings.lock().unwrap();
+            let settings = guard.drain();
             Ok(settings.collect())
         }
     }
@@ -130,8 +137,10 @@ mod tests {
                 value: Some("{\"key\": \"value\"}".into()),
             })],
         );
-        let settings_provider = TestSettingsProvider { settings };
-        let mut runtime_settings = RuntimeSettings::new(settings_provider);
+        let settings_provider = TestSettingsProvider {
+            settings: Mutex::new(settings),
+        };
+        let runtime_settings = RuntimeSettings::new(settings_provider);
 
         runtime_settings.refresh().await.unwrap();
 
