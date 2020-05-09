@@ -2,9 +2,9 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::Iterator;
+use std::sync::RwLock;
 
 use serde::de::DeserializeOwned;
-use std::sync::RwLock;
 
 use crate::context::Context;
 use crate::filters::SettingsService;
@@ -58,10 +58,10 @@ impl RuntimeSettings {
     }
 
     pub fn get<K: ?Sized, V>(&self, key: &K, ctx: &Context) -> Option<V>
-    where
-        String: Borrow<K>,
-        K: Hash + Eq,
-        V: DeserializeOwned,
+        where
+            String: Borrow<K>,
+            K: Hash + Eq,
+            V: DeserializeOwned,
     {
         let settings_guard = self.settings.read().unwrap();
         let value = match settings_guard.get(key) {
@@ -84,13 +84,18 @@ impl RuntimeSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::entities::Setting;
-    use async_trait::async_trait;
-    use serde::Deserialize;
     use std::sync::Mutex;
+    use serde::Deserialize;
+    use async_trait::async_trait;
+    use crate::entities::{Filter, Setting};
+    use super::*;
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct SomeData {
+        key: String,
+    }
 
     fn _make_ctx() -> Context {
         Context {
@@ -121,11 +126,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_settings_refresh() {
-        #[derive(Deserialize, Debug, PartialEq)]
-        struct SomeData {
-            key: String,
-        }
-
         let mut settings = HashMap::new();
         settings.insert(
             "TEST_KEY".to_string(),
@@ -154,6 +154,52 @@ mod tests {
             val,
             Some(SomeData {
                 key: "value".to_string()
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_get_skip_not_suitable_settings() {
+        let mut settings = HashMap::new();
+        settings.insert(
+            "TEST_KEY".to_string(),
+            vec![
+                SettingsService::new(Setting {
+                    key: "TEST_KEY".to_string(),
+                    priority: 10,
+                    runtime: "rust".to_string(),
+                    filters: Some(vec![Filter {
+                        name: "application".to_string(),
+                        value: "foo".to_string(),
+                    }]),
+                    value: Some("{\"key\": \"wrong-value\"}".into()),
+                }),
+                SettingsService::new(Setting {
+                    key: "TEST_KEY".to_string(),
+                    priority: 0,
+                    runtime: "rust".to_string(),
+                    filters: None,
+                    value: Some("{\"key\": \"right-value\"}".into()),
+                })
+            ],
+        );
+        let settings_provider = TestSettingsProvider {
+            settings: Mutex::new(settings),
+        };
+        let runtime_settings = RuntimeSettings::new(settings_provider);
+
+        runtime_settings.refresh().await.unwrap();
+
+        let key = "TEST_KEY";
+
+        // act
+        let val: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
+
+        // assert
+        assert_eq!(
+            val,
+            Some(SomeData {
+                key: "right-value".to_string()
             })
         );
     }

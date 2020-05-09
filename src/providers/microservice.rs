@@ -50,8 +50,6 @@ impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
         println!("Get runtime settings");
         let rs_response: RuntimeSettingsResponse = fetch_json(url).await?;
 
-        println!("Settings: {:#?}", rs_response);
-
         let settings = prepare_settings(rs_response.settings);
 
         Ok(settings)
