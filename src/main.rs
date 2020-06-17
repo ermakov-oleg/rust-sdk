@@ -7,6 +7,7 @@ use serde::Deserialize;
 use cian_settings::{Context, Settings};
 use std::time::Duration;
 use tokio::time::delay_for;
+use futures::future::join_all;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
