@@ -8,11 +8,11 @@ use serde::Deserialize;
 
 use async_trait::async_trait;
 
-use crate::entities::Setting;
+use crate::entities::{RuntimeSettingsResponse, Setting};
 use crate::filters::SettingsService;
-use crate::RuntimeSettingsProvider;
+// use crate::RuntimeSettingsProvider;
 use core::fmt;
-use std::error;
+use std::{error, fs};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -26,48 +26,19 @@ impl MicroserviceRuntimeSettingsProvider {
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct SettingKey {
-    key: String,
-    priority: u32,
-}
-
-#[derive(Deserialize, Debug)]
-struct RuntimeSettingsResponse {
-    settings: Vec<Setting>,
-    deleted: Vec<SettingKey>,
-    version: String,
-}
-
-#[async_trait]
-impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
-    async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
+// #[async_trait]
+impl MicroserviceRuntimeSettingsProvider {
+    pub async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
         let url = format!(
-            "{}/v2/get-cian-settings/?runtime=python&version=0",
-            self.base_url
+            "{}/v2/get-runtime-settings/?runtime=python&version={}",
+            self.base_url, version,
         )
         .parse()?;
         println!("Get runtime settings");
-        let rs_response: RuntimeSettingsResponse = fetch_json(url).await?;
+        let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
-        let settings = prepare_settings(rs_response.settings);
-
-        Ok(settings)
+        Ok(response)
     }
-}
-
-fn prepare_settings(settings: Vec<Setting>) -> HashMap<String, Vec<SettingsService>> {
-    let mut settings_dict = HashMap::new();
-    for s in settings {
-        let key = s.key.clone();
-        let ss = SettingsService::new(s);
-
-        settings_dict.entry(key).or_insert_with(Vec::new).push(ss);
-    }
-    settings_dict
-        .values_mut()
-        .for_each(|data| data.sort_by_key(|ss| Reverse(ss.setting.priority)));
-    settings_dict
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +82,7 @@ where
     // try to parse as json with serde_json
     let result = serde_json::from_reader(body.reader())?;
 
+    // serde_json::from_str()
     Ok(result)
 }
 
