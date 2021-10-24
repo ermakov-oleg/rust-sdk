@@ -1,33 +1,43 @@
 // use std::borrow::Borrow;
-// use std::collections::HashMap;
+use std::collections::HashMap;
 // use std::hash::Hash;
 // use std::iter::Iterator;
-// use std::sync::RwLock;
+use std::sync::RwLock;
 //
 // use serde::de::DeserializeOwned;
 //
 // use crate::context::Context;
-// use crate::filters::SettingsService;
+use crate::filters::SettingsService;
+use crate::providers::{DiffSettings, MicroserviceRuntimeSettingsProvider};
 // // use crate::providers::RuntimeSettingsProvider;
 // // use crate::MicroserviceRuntimeSettingsProvider;
 //
 // type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-//
-// pub struct RuntimeSettings {
-//     settings: RwLock<HashMap<String, Vec<SettingsService>>>,
-//     // mcs_settings_provider: MicroserviceRuntimeSettingsProvider<'static>,
-//     version: RwLock<String>,
-// }
-//
-// impl RuntimeSettings {
-//     pub fn new(base_url: &str) -> Self {
-//         // let mcs_settings_provider = MicroserviceRuntimeSettingsProvider::new(base_url);
-//         Self {
-//             settings: RwLock::new(HashMap::new()),
-//             version: RwLock::from("0".to_string()),
-//             // mcs_settings_provider,
-//         }
-//     }
+
+use std::env::var;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref RUNTIME_SETTINGS_BASE_URL: String = var("RUNTIME_SETTINGS_BASE_URL").unwrap();
+}
+
+
+pub struct RuntimeSettings {
+    settings: RwLock<HashMap<String, Vec<SettingsService>>>,
+    mcs_settings_provider: Box<dyn DiffSettings>,
+    version: RwLock<String>,
+}
+
+impl RuntimeSettings {
+    pub fn new() -> Self {
+        let mcs_settings_provider = MicroserviceRuntimeSettingsProvider::new(RUNTIME_SETTINGS_BASE_URL.to_string());
+        Self {
+            settings: RwLock::new(HashMap::new()),
+            version: RwLock::from("0".to_string()),
+            mcs_settings_provider: Box::new(mcs_settings_provider),
+        }
+    }
+}
 //     //
 //     // pub async fn refresh(&mut self) -> Result<()> {
 //     //     // let new_settings = match self.mcs_settings_provider.get_settings(&self.version).await {

@@ -2,7 +2,7 @@ mod context;
 pub mod entities;
 mod filters;
 mod providers;
-// mod rs;
+mod rs;
 mod settings;
 
 // pub use crate::providers::{MicroserviceRuntimeSettingsProvider};

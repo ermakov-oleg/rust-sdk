@@ -10,11 +10,17 @@ use async_trait::async_trait;
 
 use crate::entities::{RuntimeSettingsResponse, Setting};
 use crate::filters::SettingsService;
-// use crate::RuntimeSettingsProvider;
 use core::fmt;
-use std::{error, fs};
+use std::error;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+
+#[async_trait]
+pub trait DiffSettings {
+    async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse>;
+}
+
 
 pub struct MicroserviceRuntimeSettingsProvider {
     base_url: String,
@@ -26,9 +32,9 @@ impl MicroserviceRuntimeSettingsProvider {
     }
 }
 
-// #[async_trait]
-impl MicroserviceRuntimeSettingsProvider {
-    pub async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
+#[async_trait]
+impl DiffSettings for MicroserviceRuntimeSettingsProvider {
+    async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
         let url = format!(
             "{}/v2/get-runtime-settings/?runtime=python&version={}",
             self.base_url, version,
@@ -84,49 +90,4 @@ where
 
     // serde_json::from_str()
     Ok(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_prepare_settings_expected_settings_sort_order() {
-        // arrange
-        let raw_settings = vec![
-            Setting {
-                key: "foo".to_string(),
-                priority: 100,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-            Setting {
-                key: "foo".to_string(),
-                priority: 0,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-            Setting {
-                key: "foo".to_string(),
-                priority: 110,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-        ];
-
-        // act
-        let settings = prepare_settings(raw_settings);
-
-        // assert
-        assert_eq!(
-            settings["foo"]
-                .iter()
-                .map(|s| s.setting.priority)
-                .collect::<Vec<u32>>(),
-            [110, 100, 0]
-        );
-    }
 }
