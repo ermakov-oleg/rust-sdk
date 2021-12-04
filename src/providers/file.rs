@@ -1,39 +1,28 @@
-
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
-
+use log::error;
 use serde::Deserialize;
 
+use crate::entities::Setting;
 
-//
-// pub fn get_settings<'a>() -> RuntimeSettings<'a> {
-//     let raw: RuntimeSettingsFilesRaw = read_settings();
-//     raw.into()
-// }
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Setting {
-    key: String,
-    priority: u32,
-    runtime: String,
-    filter: HashMap<String, String>,
-    value: String,
+pub struct FileProvider {
+    path: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct RuntimeSettingsFilesRaw {
-    settings: Vec<Setting>,
+impl FileProvider {
+    pub fn new(path: String) -> FileProvider {
+        FileProvider { path }
+    }
+
+    pub fn read_settings(&self) -> Result<Vec<Setting>> {
+        let contents = fs::read_to_string(&self.path)?;
+        let result: Vec<Setting> = serde_json::from_str(contents.as_str())?;
+        Ok(result)
+    }
 }
 
-fn read_settings<T>() -> T
-where
-    T: serde::de::DeserializeOwned,
-{
-    // let contents = fs::read_to_string("./settings.json")
-    let contents = fs::read_to_string("./settings-simple.json").expect("File error");
-    println!("{}", contents);
-    let result = serde_json::from_str(contents.as_str()).expect("Fail parse");
 
-    result
-}
