@@ -1,18 +1,13 @@
-use bytes::buf::BufExt;
+use core::fmt;
+use std::error;
+
+use async_trait::async_trait;
 use hyper::body::{Buf, to_bytes};
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 
-
-use async_trait::async_trait;
-
-use crate::entities::{RuntimeSettingsResponse};
-
-use core::fmt;
-use std::error;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
+use crate::entities::RuntimeSettingsResponse;
+use crate::providers::Result;
 
 #[async_trait]
 pub trait DiffSettings {
@@ -37,7 +32,7 @@ impl DiffSettings for MicroserviceRuntimeSettingsProvider {
             "{}/v2/get-runtime-settings/?runtime=python&version={}",
             self.base_url, version,
         )
-        .parse()?;
+            .parse()?;
         println!("Get runtime settings {:?}", url);
         let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
@@ -63,8 +58,8 @@ impl error::Error for HttpError {
 }
 
 async fn fetch_json<T>(url: hyper::Uri) -> Result<T>
-where
-    T: serde::de::DeserializeOwned,
+    where
+        T: serde::de::DeserializeOwned,
 {
     // Create client
     let https = HttpsConnector::new();

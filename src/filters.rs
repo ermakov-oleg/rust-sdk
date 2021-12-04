@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+
 use regex::Regex;
 
 use crate::context::Context;
 use crate::entities::Setting;
-use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
 
 pub trait RSFilter {
     fn check(&self, ctx: &Context) -> bool;

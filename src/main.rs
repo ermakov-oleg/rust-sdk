@@ -5,11 +5,8 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use cian_settings::{Context, RuntimeSettings, test};
+use cian_settings::{Context, RuntimeSettings};
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-//
 #[derive(Debug, Deserialize)]
 struct PGConnectionString {
     user: String,
@@ -17,9 +14,7 @@ struct PGConnectionString {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    test();
-
+async fn main() -> Result<(), ()> {
     let mut rs = RuntimeSettings::new();
     rs.init().await;
     rs.refresh().await.unwrap();
@@ -39,8 +34,8 @@ async fn main() -> Result<()> {
         context: Default::default(),
     };
 
-    let key = "postgres_connection/some_db";
-    let key = "SOME_KEY";
+    let _key = "postgres_connection/some_db";
+    let key = "AB_EXPERIMENTS_TIMEOUT";
 
     let val: Option<u32> = rs.get(key, &ctx);
 

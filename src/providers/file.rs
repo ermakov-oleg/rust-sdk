@@ -1,13 +1,7 @@
-use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-
-use log::error;
-use serde::Deserialize;
 
 use crate::entities::Setting;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use crate::providers::Result;
 
 pub struct FileProvider {
     path: String,

@@ -18,7 +18,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 
 lazy_static! {
     static ref RUNTIME_SETTINGS_BASE_URL: String = var("RUNTIME_SETTINGS_BASE_URL").unwrap_or("http://master.runtime-settings.dev3.cian.ru".to_string());
-    static ref RUNTIME_SETTINGS_FILE_PATH: String = var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or("/Users/ermakov/projects/rust/cian-settings/settings-simple.json".to_string());
+    static ref RUNTIME_SETTINGS_FILE_PATH: String = var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or("./settings.json".to_string());
 }
 
 pub struct RuntimeSettings {
@@ -70,6 +70,7 @@ impl RuntimeSettings {
     }
 
     fn refresh_from_file(&mut self) {
+        println!("Refresh settings from file ...");
         let provider = FileProvider::new(RUNTIME_SETTINGS_FILE_PATH.to_string());
         match provider.read_settings() {
             Ok(settings) => {
@@ -79,6 +80,7 @@ impl RuntimeSettings {
                 eprintln!("Error: Could not update settings from file: {} error: {}", *RUNTIME_SETTINGS_FILE_PATH, err)
             },
         };
+        println!("Finish refresh settings from file");
     }
 
     fn update_settings(&mut self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
@@ -106,6 +108,7 @@ impl RuntimeSettings {
             Some(vss) => {
                 vss
                     .iter()
+                    .rev()
                     .find(|f| f.is_suitable(ctx))
                     .and_then(|val| val.setting.value.clone())
             },
@@ -150,7 +153,7 @@ fn merge_settings(
     new_settings: Vec<SettingsService>,
 ) {
     for new in new_settings {
-        let mut entry = settings
+        let entry = settings
             .entry(new.setting.key.clone())
             .or_insert_with(|| vec![]);
 
@@ -163,12 +166,9 @@ fn merge_settings(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
-    use async_trait::async_trait;
     use serde::Deserialize;
 
-    use crate::entities::{Filter, Setting};
+    use crate::entities::Setting;
 
     use super::*;
 
