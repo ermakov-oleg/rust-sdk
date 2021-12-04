@@ -1,9 +1,7 @@
-
-
-
 use bytes::buf::BufExt;
-use bytes::Buf;
+use hyper::body::{Buf, to_bytes};
 use hyper::Client;
+use hyper_tls::HttpsConnector;
 
 
 use async_trait::async_trait;
@@ -40,7 +38,7 @@ impl DiffSettings for MicroserviceRuntimeSettingsProvider {
             self.base_url, version,
         )
         .parse()?;
-        println!("Get runtime settings");
+        println!("Get runtime settings {:?}", url);
         let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
         Ok(response)
@@ -69,7 +67,8 @@ where
     T: serde::de::DeserializeOwned,
 {
     // Create client
-    let client = Client::new();
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
 
     // Fetch the url...
     let res = client.get(url).await?;
@@ -77,11 +76,11 @@ where
     let (parts, body) = res.into_parts();
 
     // asynchronously aggregate the chunks of the body
-    let body = hyper::body::aggregate(body).await?;
+    let body = to_bytes(body).await?;
 
     if !parts.status.is_success() {
         return Err(Box::new(HttpError {
-            error: String::from_utf8_lossy(body.bytes()).into_owned(),
+            error: String::from_utf8_lossy(&*body).into_owned(),
         }));
     }
 

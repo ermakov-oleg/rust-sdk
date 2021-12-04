@@ -7,7 +7,7 @@ pub struct Filter {
     pub value: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct Setting {
     pub key: String,
     pub priority: u32,
@@ -17,14 +17,14 @@ pub struct Setting {
 }
 
 #[derive(Deserialize, Debug)]
-struct SettingKey {
-    key: String,
-    priority: u32,
+pub(crate) struct SettingKey {
+    pub(crate) key: String,
+    pub(crate) priority: u32,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct RuntimeSettingsResponse {
-    pub settings: Vec<Setting>,
-    deleted: Vec<SettingKey>,
+    pub(crate) settings: Vec<Setting>,
+    pub(crate) deleted: Vec<SettingKey>,
     pub(crate) version: String,
 }

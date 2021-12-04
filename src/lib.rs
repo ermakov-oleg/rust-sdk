@@ -7,7 +7,7 @@ mod settings;
 
 // pub use crate::providers::{MicroserviceRuntimeSettingsProvider};
 pub use context::Context;
-// pub use rs::RuntimeSettings;
+pub use rs::RuntimeSettings;
 // pub use settings::Settings;
 
 pub fn test() {

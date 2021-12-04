@@ -5,7 +5,7 @@
 
 
 
-use cian_settings::{test};
+use cian_settings::{test, RuntimeSettings};
 
 
 
@@ -40,6 +40,12 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 #[tokio::main]
 async fn main() -> Result<()> {
     test();
+
+    let mut rs = RuntimeSettings::new();
+
+    rs.refresh().await.unwrap();
+    rs.refresh().await.unwrap();
+
 
     // println!("With text:\n{:?}", data);
 

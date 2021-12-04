@@ -3,6 +3,7 @@ use regex::Regex;
 use crate::context::Context;
 use crate::entities::Setting;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 
 pub trait RSFilter {
     fn check(&self, ctx: &Context) -> bool;
@@ -101,7 +102,6 @@ impl RSFilter for Filter {
             Filter::Environment(p) => p.is_match(&ctx.environment),
             Filter::Context(p) => p.is_match(&ctx.context),
             Filter::Noop => false,
-            _ => unimplemented!(),
         }
     }
 
@@ -117,6 +117,7 @@ impl RSFilter for Filter {
     }
 }
 
+// todo: move to try_from
 impl From<(String, String)> for Filter {
     fn from((key, value): (String, String)) -> Self {
         let val = value.to_string();
@@ -155,6 +156,19 @@ impl SettingsService {
 
     pub fn is_suitable(&self, ctx: &Context) -> bool {
         (&self.filters).iter().all(|filter| filter.check(ctx))
+    }
+}
+
+
+impl Debug for SettingsService {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettingsService").field("setting", &self.setting).finish()
+    }
+}
+
+impl PartialEq for SettingsService {
+    fn eq(&self, other: &Self) -> bool {
+        self.setting == other.setting
     }
 }
 
