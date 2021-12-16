@@ -49,7 +49,6 @@
 //         K: Hash + Eq,
 //         V: DeserializeOwned,
 //     {
-//         // todo: add layers
 //         self.runtime_settings.get(key, ctx)
 //     }
 // }

@@ -27,7 +27,6 @@ pub struct RuntimeSettings {
     version: RwLock<String>,
 }
 
-// #[async_trait]
 impl RuntimeSettings {
     pub fn new() -> Self {
         let mcs_settings_provider =

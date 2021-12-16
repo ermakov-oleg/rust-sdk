@@ -82,6 +82,5 @@ async fn fetch_json<T>(url: hyper::Uri) -> Result<T>
     // try to parse as json with serde_json
     let result = serde_json::from_reader(body.reader())?;
 
-    // serde_json::from_str()
     Ok(result)
 }
