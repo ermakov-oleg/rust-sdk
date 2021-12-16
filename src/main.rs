@@ -1,14 +1,11 @@
 #![warn(rust_2018_idioms)]
 
+
 use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use cian_settings::{Context, Settings};
-use std::time::Duration;
-use tokio::time::delay_for;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use cian_settings::{Context, RuntimeSettings};
 
 #[derive(Debug, Deserialize)]
 struct PGConnectionString {
@@ -17,13 +14,18 @@ struct PGConnectionString {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let settings = Settings::new("http://master.cian-settings.dev3.cian.ru".into()).await;
+async fn main() -> Result<(), ()> {
+    let mut rs = RuntimeSettings::new();
+    rs.init().await;
+    rs.refresh().await.unwrap();
+
 
     let ctx = Context {
         application: "test-rust".into(),
         server: "test-server".into(),
-        environment: HashMap::new(),
+        environment: HashMap::from([
+            ("TEST".to_string(), "ermakov".to_string()),
+        ]),
         host: None,
         url: None,
         url_path: None,
@@ -32,14 +34,12 @@ async fn main() -> Result<()> {
         context: Default::default(),
     };
 
-    let key = "postgres_connection/qa_tests_manager";
-    // let key = "CALLTRACKING_CORE_TIMEOUT";
+    let _key = "postgres_connection/some_db";
+    let key = "AB_EXPERIMENTS_TIMEOUT";
 
-    // let val: Option<u32> = settings.get(key, &ctx);
-    let val: Option<PGConnectionString> = settings.get(key, &ctx);
+    let val: Option<u32> = rs.get(key, &ctx);
 
     println!("Settings {}:{:#?}", key, val);
 
-    delay_for(Duration::from_secs(60)).await;
     Ok(())
 }

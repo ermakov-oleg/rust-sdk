@@ -1,98 +1,153 @@
-use crate::context::Context;
-use crate::entities::{Filter, Setting};
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+
 use regex::Regex;
 
+use crate::context::Context;
+use crate::entities::Setting;
+
 pub trait RSFilter {
-    fn check(&self, _ctx: &Context) -> bool {
-        false
-    }
+    fn check(&self, ctx: &Context) -> bool;
+    fn is_static(&self) -> bool;
 }
 
-pub enum RSFilterImpl {
-    Filter(Box<dyn RSFilter + Sync + Send>),
+enum Filter {
+    Application(Pattern),
+    Server(Pattern),
+    Host(Pattern),
+    Url(Pattern),
+    UrlPath(Pattern),
+    Email(Pattern),
+    Ip(Pattern),
+    Environment(MapPattern),
+    Context(MapPattern),
+    // Todo: LibraryVersion
+    // Todo: McsRunEnv
+    Noop,
 }
 
-struct PatternRSFilter {
-    ctx_attr: String,
+#[derive(Debug)]
+struct Pattern {
     pattern: Regex,
 }
 
-// todo: HashMap filter for envs
-// todo: PatternHashMap filter for context
-
-struct DummyRSFilter {}
-
-impl RSFilter for DummyRSFilter {}
-
-impl PatternRSFilter {
-    fn new(ctx_attr: String, pattern: String) -> Self {
-        PatternRSFilter {
-            ctx_attr,
+impl Pattern {
+    fn new(pattern: String) -> Self {
+        Self {
             pattern: Regex::new((&format!("^{}$", pattern)).as_ref()).unwrap(),
         }
     }
-}
 
-impl RSFilter for PatternRSFilter {
-    fn check(&self, ctx: &Context) -> bool {
-        match self.ctx_attr.as_str() {
-            "application" => self.pattern.is_match(ctx.application.as_str()),
-            "server" => self.pattern.is_match(ctx.server.as_str()),
-            "host" => ctx
-                .host
-                .as_ref()
-                .map_or(false, |v| self.pattern.is_match(v.as_str())),
-            "url" => ctx
-                .url
-                .as_ref()
-                .map_or(false, |v| self.pattern.is_match(v.as_str())),
-            "url_path" => ctx
-                .url_path
-                .as_ref()
-                .map_or(false, |v| self.pattern.is_match(v.as_str())),
-            "email" => ctx
-                .email
-                .as_ref()
-                .map_or(false, |v| self.pattern.is_match(v.as_str())),
-            "ip" => ctx
-                .ip
-                .as_ref()
-                .map_or(false, |v| self.pattern.is_match(v.as_str())),
-            _ => {
-                eprintln!("Invalid ctx_attr: {}", &self.ctx_attr);
-                false
-            }
+    fn is_match(&self, val: Option<&str>) -> bool {
+        match val {
+            Some(val) => self.pattern.is_match(val),
+            None => false,
         }
     }
 }
 
-fn make_rs_filter(f: &Filter) -> RSFilterImpl {
-    fn _mk_pattern_flt(ctx_attr: &str, pattern: String) -> RSFilterImpl {
-        RSFilterImpl::Filter(Box::new(PatternRSFilter::new(ctx_attr.into(), pattern)))
+#[derive(Debug)]
+struct MapPattern {
+    patterns: Vec<(String, Regex)>,
+}
+
+impl MapPattern {
+    fn new(patterns_raw: Vec<&str>) -> Self {
+        let mut patterns = vec![];
+        for pattern_raw in patterns_raw {
+            let items: Vec<&str> = pattern_raw.splitn(2, '=').collect();
+            let pattern = match items[..] {
+                [key, val] => (
+                    key.into(),
+                    Regex::new((&format!("^{}$", val)).as_ref()).unwrap(),
+                ),
+                _ => unimplemented!(), // todo: error
+            };
+            patterns.push(pattern);
+        }
+
+        Self { patterns }
     }
 
-    match f.name.as_ref() {
-        "application" => _mk_pattern_flt("application", f.value.clone()),
-        "server" => _mk_pattern_flt("server", f.value.clone()),
-        "url" => _mk_pattern_flt("url", f.value.clone()),
-        "url_path" => _mk_pattern_flt("url_path", f.value.clone()),
-        "email" => _mk_pattern_flt("email", f.value.clone()),
-        "ip" => _mk_pattern_flt("ip", f.value.clone()),
-        _ => RSFilterImpl::Filter(Box::new(DummyRSFilter {})),
+    fn is_match(&self, value: &HashMap<String, String>) -> bool {
+        let mut result = true;
+        for (key, pattern) in &self.patterns {
+            match value.get(key.as_str()) {
+                Some(val) => {
+                    if !pattern.is_match(val) {
+                        result = false;
+                        break;
+                    }
+                }
+                None => {
+                    result = false;
+                    break;
+                }
+            }
+        }
+
+        result
+    }
+}
+
+impl RSFilter for Filter {
+    fn check(&self, ctx: &Context) -> bool {
+        match self {
+            Filter::Application(p) => p.is_match(Some(&*ctx.application)),
+            Filter::Server(p) => p.is_match(Some(&*ctx.server)),
+            Filter::Host(p) => p.is_match(ctx.host.as_deref()),
+            Filter::Url(p) => p.is_match(ctx.url.as_deref()),
+            Filter::UrlPath(p) => p.is_match(ctx.url_path.as_deref()),
+            Filter::Email(p) => p.is_match(ctx.email.as_deref()),
+            Filter::Ip(p) => p.is_match(ctx.ip.as_deref()),
+            Filter::Environment(p) => p.is_match(&ctx.environment),
+            Filter::Context(p) => p.is_match(&ctx.context),
+            Filter::Noop => false,
+        }
+    }
+
+    fn is_static(&self) -> bool {
+        match self {
+            Filter::Noop
+            | Filter::Host(_)
+            | Filter::Application(_)
+            | Filter::Server(_)
+            | Filter::Environment(_) => true,
+            _ => false,
+        }
+    }
+}
+
+// todo: move to try_from
+impl From<(String, String)> for Filter {
+    fn from((key, value): (String, String)) -> Self {
+        let val = value.to_string();
+        match key.as_str() {
+            "application" => Filter::Application(Pattern::new(val)),
+            "server" => Filter::Server(Pattern::new(val)),
+            "host" => Filter::Host(Pattern::new(val)),
+            "url" => Filter::Url(Pattern::new(val)),
+            "url_path" => Filter::UrlPath(Pattern::new(val)),
+            "email" => Filter::Email(Pattern::new(val)),
+            "ip" => Filter::Ip(Pattern::new(val)),
+            "environment" => Filter::Environment(MapPattern::new(val.split(';').collect())),
+            "context" => Filter::Context(MapPattern::new(val.split(';').collect())),
+            _ => Filter::Noop,
+        }
     }
 }
 
 pub struct SettingsService {
     pub setting: Box<Setting>,
-    filters: Vec<RSFilterImpl>,
+    filters: Vec<Box<dyn RSFilter>>,
 }
 
 impl SettingsService {
     pub fn new(setting: Setting) -> Self {
-        let filters = match &setting.filters {
-            Some(f) => f.iter().map(make_rs_filter).collect(),
-            None => vec![],
-        };
+        let mut filters: Vec<Box<dyn RSFilter>> = vec![];
+        for item in setting.filter.clone() {
+            filters.push(Box::new(Filter::from(item)));
+        }
 
         SettingsService {
             setting: Box::new(setting),
@@ -101,16 +156,27 @@ impl SettingsService {
     }
 
     pub fn is_suitable(&self, ctx: &Context) -> bool {
-        (&self.filters).iter().all(|filter| {
-            let RSFilterImpl::Filter(flt) = filter;
-            flt.check(ctx)
-        })
+        (&self.filters).iter().all(|filter| filter.check(ctx))
+    }
+}
+
+
+impl Debug for SettingsService {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettingsService").field("setting", &self.setting).finish()
+    }
+}
+
+impl PartialEq for SettingsService {
+    fn eq(&self, other: &Self) -> bool {
+        self.setting == other.setting
     }
 }
 
 #[cfg(test)]
 mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use std::collections::HashMap;
+
     use super::*;
 
     fn _make_ctx() -> Context {
@@ -127,16 +193,21 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_settings_service_is_suitable_without_filters() {
-        // arrange
-        let ss = SettingsService::new(Setting {
+    fn _make_setting() -> Setting {
+        Setting {
             key: "TEST_KEY".to_string(),
             priority: 0,
             runtime: "rust".to_string(),
-            filters: None,
+            filter: HashMap::new(),
             value: Some("foo".to_string()),
-        });
+        }
+    }
+
+    #[test]
+    fn test_settings_service_is_suitable_without_filters() {
+        // arrange
+        let setting = _make_setting();
+        let ss = SettingsService::new(setting);
 
         // act && assert
         assert!(ss.is_suitable(&_make_ctx()));
@@ -145,16 +216,9 @@ mod tests {
     #[test]
     fn test_settings_service_not_suitable_with_unknown_filter() {
         // arrange
-        let ss = SettingsService::new(Setting {
-            key: "TEST_KEY".to_string(),
-            priority: 0,
-            runtime: "rust".to_string(),
-            filters: Some(vec![Filter {
-                name: "unknown_filter".to_string(),
-                value: "test".to_string(),
-            }]),
-            value: Some("foo".to_string()),
-        });
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("unknown_filter".to_string(), "test".to_string())]);
+        let ss = SettingsService::new(setting);
 
         // act && assert
         assert!(!ss.is_suitable(&_make_ctx()));
@@ -163,16 +227,9 @@ mod tests {
     #[test]
     fn test_settings_service_not_suitable_filter_for_another_application() {
         // arrange
-        let ss = SettingsService::new(Setting {
-            key: "TEST_KEY".to_string(),
-            priority: 0,
-            runtime: "rust".to_string(),
-            filters: Some(vec![Filter {
-                name: "application".to_string(),
-                value: "python-mcs-test".to_string(),
-            }]),
-            value: Some("foo".to_string()),
-        });
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("application".to_string(), "some-mcs".to_string())]);
+        let ss = SettingsService::new(setting);
 
         // act && assert
         assert!(!ss.is_suitable(&_make_ctx()));
@@ -181,16 +238,9 @@ mod tests {
     #[test]
     fn test_settings_service_is_suitable_application_filter() {
         // arrange
-        let ss = SettingsService::new(Setting {
-            key: "TEST_KEY".to_string(),
-            priority: 0,
-            runtime: "rust".to_string(),
-            filters: Some(vec![Filter {
-                name: "application".to_string(),
-                value: "test-rust".to_string(),
-            }]),
-            value: Some("foo".to_string()),
-        });
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("application".to_string(), "test-rust".to_string())]);
+        let ss = SettingsService::new(setting);
 
         // act && assert
         assert!(ss.is_suitable(&_make_ctx()));
@@ -199,19 +249,69 @@ mod tests {
     #[test]
     fn test_settings_service_is_suitable_url_filter() {
         // arrange
-        let ss = SettingsService::new(Setting {
-            key: "TEST_KEY".to_string(),
-            priority: 0,
-            runtime: "rust".to_string(),
-            filters: Some(vec![Filter {
-                name: "url".to_string(),
-                value: "some-url".to_string(),
-            }]),
-            value: Some("foo".to_string()),
-        });
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("url".to_string(), "some-url".to_string())]);
+        let ss = SettingsService::new(setting);
 
         let mut ctx = _make_ctx();
         ctx.url = Some("some-url".to_string());
+
+        // act && assert
+        assert!(ss.is_suitable(&ctx));
+    }
+
+    #[test]
+    fn test_settings_service_is_not_suitable_env_filter__filter_env_not_exist() {
+        // arrange
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("environment".to_string(), "SOME_ENV=123".to_string())]);
+        let ss = SettingsService::new(setting);
+
+        let mut ctx = _make_ctx();
+        ctx.environment = HashMap::from([("FOO".into(), "BAR".into())]);
+
+        // act && assert
+        assert!(!ss.is_suitable(&ctx));
+    }
+
+    #[test]
+    fn test_settings_service_is_not_suitable_env_filter__filter_env_exist_and_not_eq() {
+        // arrange
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("environment".to_string(), "FOO=BAZ".to_string())]);
+        let ss = SettingsService::new(setting);
+
+        let mut ctx = _make_ctx();
+        ctx.environment = HashMap::from([("FOO".into(), "BAR".into())]);
+
+        // act && assert
+        assert!(!ss.is_suitable(&ctx));
+    }
+
+    #[test]
+    fn test_settings_service_is_not_suitable_env_filter__only_one_filter_env_exist_and_eq() {
+        // arrange
+        let mut setting = _make_setting();
+        setting.filter =
+            HashMap::from([("environment".to_string(), "FOO=BAR;BAZ=QUUX".to_string())]);
+        let ss = SettingsService::new(setting);
+
+        let mut ctx = _make_ctx();
+        ctx.environment = HashMap::from([("FOO".into(), "BAR".into())]);
+
+        // act && assert
+        assert!(!ss.is_suitable(&ctx));
+    }
+
+    #[test]
+    fn test_settings_service_is_suitable_env_filter__filter_env_exist_and_eq() {
+        // arrange
+        let mut setting = _make_setting();
+        setting.filter = HashMap::from([("environment".to_string(), "FOO=BAR".to_string())]);
+        let ss = SettingsService::new(setting);
+
+        let mut ctx = _make_ctx();
+        ctx.environment = HashMap::from([("FOO".into(), "BAR".into())]);
 
         // act && assert
         assert!(ss.is_suitable(&ctx));

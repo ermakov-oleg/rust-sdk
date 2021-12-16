@@ -1,20 +1,19 @@
-use std::cmp::Reverse;
-use std::collections::HashMap;
-
-use bytes::buf::BufExt;
-use bytes::Buf;
-use hyper::Client;
-use serde::Deserialize;
-
-use async_trait::async_trait;
-
-use crate::entities::Setting;
-use crate::filters::SettingsService;
-use crate::RuntimeSettingsProvider;
 use core::fmt;
 use std::error;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use async_trait::async_trait;
+use hyper::body::{Buf, to_bytes};
+use hyper::Client;
+use hyper_tls::HttpsConnector;
+
+use crate::entities::RuntimeSettingsResponse;
+use crate::providers::Result;
+
+#[async_trait]
+pub trait DiffSettings {
+    async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse>;
+}
+
 
 pub struct MicroserviceRuntimeSettingsProvider {
     base_url: String,
@@ -26,48 +25,19 @@ impl MicroserviceRuntimeSettingsProvider {
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct SettingKey {
-    key: String,
-    priority: u32,
-}
-
-#[derive(Deserialize, Debug)]
-struct RuntimeSettingsResponse {
-    settings: Vec<Setting>,
-    deleted: Vec<SettingKey>,
-    version: String,
-}
-
 #[async_trait]
-impl RuntimeSettingsProvider for MicroserviceRuntimeSettingsProvider {
-    async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
+impl DiffSettings for MicroserviceRuntimeSettingsProvider {
+    async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
         let url = format!(
-            "{}/v2/get-cian-settings/?runtime=python&version=0",
-            self.base_url
+            "{}/v2/get-runtime-settings/?runtime=python&version={}",
+            self.base_url, version,
         )
-        .parse()?;
-        println!("Get runtime settings");
-        let rs_response: RuntimeSettingsResponse = fetch_json(url).await?;
+            .parse()?;
+        println!("Get runtime settings {:?}", url);
+        let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
-        let settings = prepare_settings(rs_response.settings);
-
-        Ok(settings)
+        Ok(response)
     }
-}
-
-fn prepare_settings(settings: Vec<Setting>) -> HashMap<String, Vec<SettingsService>> {
-    let mut settings_dict = HashMap::new();
-    for s in settings {
-        let key = s.key.clone();
-        let ss = SettingsService::new(s);
-
-        settings_dict.entry(key).or_insert_with(Vec::new).push(ss);
-    }
-    settings_dict
-        .values_mut()
-        .for_each(|data| data.sort_by_key(|ss| Reverse(ss.setting.priority)));
-    settings_dict
 }
 
 #[derive(Debug, Clone)]
@@ -88,11 +58,12 @@ impl error::Error for HttpError {
 }
 
 async fn fetch_json<T>(url: hyper::Uri) -> Result<T>
-where
-    T: serde::de::DeserializeOwned,
+    where
+        T: serde::de::DeserializeOwned,
 {
     // Create client
-    let client = Client::new();
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
 
     // Fetch the url...
     let res = client.get(url).await?;
@@ -100,11 +71,11 @@ where
     let (parts, body) = res.into_parts();
 
     // asynchronously aggregate the chunks of the body
-    let body = hyper::body::aggregate(body).await?;
+    let body = to_bytes(body).await?;
 
     if !parts.status.is_success() {
         return Err(Box::new(HttpError {
-            error: String::from_utf8_lossy(body.bytes()).into_owned(),
+            error: String::from_utf8_lossy(&*body).into_owned(),
         }));
     }
 
@@ -112,49 +83,4 @@ where
     let result = serde_json::from_reader(body.reader())?;
 
     Ok(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_prepare_settings_expected_settings_sort_order() {
-        // arrange
-        let raw_settings = vec![
-            Setting {
-                key: "foo".to_string(),
-                priority: 100,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-            Setting {
-                key: "foo".to_string(),
-                priority: 0,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-            Setting {
-                key: "foo".to_string(),
-                priority: 110,
-                runtime: "rust".to_string(),
-                filters: None,
-                value: None,
-            },
-        ];
-
-        // act
-        let settings = prepare_settings(raw_settings);
-
-        // assert
-        assert_eq!(
-            settings["foo"]
-                .iter()
-                .map(|s| s.setting.priority)
-                .collect::<Vec<u32>>(),
-            [110, 100, 0]
-        );
-    }
 }
