@@ -17,13 +17,13 @@ pub struct Setting {
     pub value: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct SettingKey {
     pub(crate) key: String,
     pub(crate) priority: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct RuntimeSettingsResponse {
     pub(crate) settings: Vec<Setting>,
     pub(crate) deleted: Vec<SettingKey>,

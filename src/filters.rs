@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_service_is_not_suitable_env_filter__filter_env_not_exist() {
+    fn test_settings_service_is_not_suitable_env_filter_filter_env_not_exist() {
         // arrange
         let mut setting = _make_setting();
         setting.filter = HashMap::from([("environment".to_string(), "SOME_ENV=123".to_string())]);
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_service_is_not_suitable_env_filter__filter_env_exist_and_not_eq() {
+    fn test_settings_service_is_not_suitable_env_filter_filter_env_exist_and_not_eq() {
         // arrange
         let mut setting = _make_setting();
         setting.filter = HashMap::from([("environment".to_string(), "FOO=BAZ".to_string())]);
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_service_is_not_suitable_env_filter__only_one_filter_env_exist_and_eq() {
+    fn test_settings_service_is_not_suitable_env_filter_only_one_filter_env_exist_and_eq() {
         // arrange
         let mut setting = _make_setting();
         setting.filter =
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_service_is_suitable_env_filter__filter_env_exist_and_eq() {
+    fn test_settings_service_is_suitable_env_filter_filter_env_exist_and_eq() {
         // arrange
         let mut setting = _make_setting();
         setting.filter = HashMap::from([("environment".to_string(), "FOO=BAR".to_string())]);

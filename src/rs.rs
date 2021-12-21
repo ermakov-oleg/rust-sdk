@@ -37,6 +37,15 @@ impl RuntimeSettings {
             mcs_settings_provider: Some(Box::new(mcs_settings_provider)),
         }
     }
+
+    pub fn new_with_settings_provider(provider: Box<dyn DiffSettings>) -> Self {
+        Self {
+            settings: RwLock::new(HashMap::new()),
+            version: RwLock::from("0".to_string()),
+            mcs_settings_provider: Some(provider),
+        }
+    }
+
     pub async fn init(&mut self) {
         self.refresh_from_file()
     }
@@ -165,9 +174,10 @@ fn merge_settings(
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use serde::Deserialize;
 
-    use crate::entities::Setting;
+    use crate::entities::{RuntimeSettingsResponse, Setting};
 
     use super::*;
 
@@ -290,112 +300,113 @@ mod tests {
 
         assert_eq!(settings, HashMap::from([("foo".to_string(), vec![])]));
     }
+
+    fn _make_ctx() -> Context {
+        Context {
+            application: "test-rust".to_string(),
+            server: "test-server".to_string(),
+            environment: Default::default(),
+            host: None,
+            url: None,
+            url_path: None,
+            email: None,
+            ip: None,
+            context: Default::default(),
+        }
+    }
+
+    struct TestSettingsProvider {
+        data: RuntimeSettingsResponse,
+    }
+
+    #[async_trait]
+    impl DiffSettings for TestSettingsProvider {
+        async fn get_settings(&self, _version: &str) -> Result<RuntimeSettingsResponse> {
+            Ok(self.data.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_refresh() {
+        let settings_provider = TestSettingsProvider {
+            data: RuntimeSettingsResponse {
+                settings: vec![
+                    Setting {
+                        key: "TEST_KEY".to_string(),
+                        priority: 0,
+                        value: Some("{\"key\": \"value\"}".to_string()),
+                        runtime: "rust".into(),
+                        filter: HashMap::new(),
+                    }
+                ],
+                version: '1'.to_string(),
+                deleted: vec![],
+            },
+        };
+
+        let mut runtime_settings = RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
+        let key = "TEST_KEY";
+
+        // act
+        let val1: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
+
+        runtime_settings.refresh().await.unwrap();
+
+        let val2: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
+
+
+        // assert
+        assert_eq!(val1, None);
+        assert_eq!(
+            val2,
+            Some(SomeData {
+                key: "value".to_string()
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_get_skip_not_suitable_settings() {
+        let settings_provider = TestSettingsProvider {
+            data: RuntimeSettingsResponse {
+                settings: vec![
+                    Setting {
+                        key: "TEST_KEY".to_string(),
+                        priority: 0,
+                        value: Some("{\"key\": \"wrong-value\"}".to_string()),
+                        runtime: "rust".into(),
+                        filter: HashMap::from([
+                            ("application".to_string(), "foo".to_string())
+                        ]),
+                    },
+                    Setting {
+                        key: "TEST_KEY".to_string(),
+                        priority: 0,
+                        value: Some("{\"key\": \"right-value\"}".to_string()),
+                        runtime: "rust".into(),
+                        filter: HashMap::from([
+                            ("application".to_string(), "test-rust".to_string())
+                        ]),
+                    },
+                ],
+                version: '1'.to_string(),
+                deleted: vec![],
+            },
+        };
+
+        let mut runtime_settings = RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
+        let key = "TEST_KEY";
+        runtime_settings.refresh().await.unwrap();
+
+        // act
+        let val: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
+
+        // assert
+        assert_eq!(
+            val,
+            Some(SomeData {
+                key: "right-value".to_string()
+            })
+        );
+    }
 }
-//
-//     fn _make_ctx() -> Context {
-//         Context {
-//             application: "test-rust".to_string(),
-//             server: "test-server".to_string(),
-//             environment: Default::default(),
-//             host: None,
-//             url: None,
-//             url_path: None,
-//             email: None,
-//             ip: None,
-//             context: Default::default(),
-//         }
-//     }
-//
-//     struct TestSettingsProvider {
-//         settings: Mutex<HashMap<String, Vec<SettingsService>>>,
-//     }
-//
-//     #[async_trait]
-//     impl RuntimeSettingsProvider for TestSettingsProvider {
-//         async fn get_settings(&self) -> Result<HashMap<String, Vec<SettingsService>>> {
-//             let mut guard = self.settings.lock().unwrap();
-//             let settings = guard.drain();
-//             Ok(settings.collect())
-//         }
-//     }
-//
-//     #[tokio::test]
-//     async fn test_runtime_settings_refresh() {
-//         let mut settings = HashMap::new();
-//         settings.insert(
-//             "TEST_KEY".to_string(),
-//             vec![SettingsService::new(Setting {
-//                 key: "TEST_KEY".to_string(),
-//                 priority: 0,
-//                 runtime: "rust".to_string(),
-//                 filters: None,
-//                 value: Some("{\"key\": \"value\"}".into()),
-//             })],
-//         );
-//         let settings_provider = TestSettingsProvider {
-//             settings: Mutex::new(settings),
-//         };
-//         let runtime_settings = RuntimeSettings::new(settings_provider);
-//
-//         runtime_settings.refresh().await.unwrap();
-//
-//         let key = "TEST_KEY";
-//
-//         // act
-//         let val: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
-//
-//         // assert
-//         assert_eq!(
-//             val,
-//             Some(SomeData {
-//                 key: "value".to_string()
-//             })
-//         );
-//     }
-//
-//     #[tokio::test]
-//     async fn test_runtime_settings_get_skip_not_suitable_settings() {
-//         let mut settings = HashMap::new();
-//         settings.insert(
-//             "TEST_KEY".to_string(),
-//             vec![
-//                 SettingsService::new(Setting {
-//                     key: "TEST_KEY".to_string(),
-//                     priority: 10,
-//                     runtime: "rust".to_string(),
-//                     filters: Some(vec![Filter {
-//                         name: "application".to_string(),
-//                         value: "foo".to_string(),
-//                     }]),
-//                     value: Some("{\"key\": \"wrong-value\"}".into()),
-//                 }),
-//                 SettingsService::new(Setting {
-//                     key: "TEST_KEY".to_string(),
-//                     priority: 0,
-//                     runtime: "rust".to_string(),
-//                     filters: None,
-//                     value: Some("{\"key\": \"right-value\"}".into()),
-//                 })
-//             ],
-//         );
-//         let settings_provider = TestSettingsProvider {
-//             settings: Mutex::new(settings),
-//         };
-//         let runtime_settings = RuntimeSettings::new(settings_provider);
-//
-//         runtime_settings.refresh().await.unwrap();
-//
-//         let key = "TEST_KEY";
-//
-//         // act
-//         let val: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
-//
-//         // assert
-//         assert_eq!(
-//             val,
-//             Some(SomeData {
-//                 key: "right-value".to_string()
-//             })
-//         );
-//     }
-// }
