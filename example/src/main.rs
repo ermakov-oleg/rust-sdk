@@ -4,12 +4,6 @@ mod consts;
 mod settings;
 mod web;
 
-#[derive(Debug, Deserialize)]
-struct PGConnectionString {
-    user: String,
-    password: String,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     tracing_subscriber::fmt::init();
