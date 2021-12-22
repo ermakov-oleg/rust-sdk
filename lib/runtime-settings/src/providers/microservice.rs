@@ -2,7 +2,7 @@ use core::fmt;
 use std::error;
 
 use async_trait::async_trait;
-use hyper::body::{Buf, to_bytes};
+use hyper::body::{to_bytes, Buf};
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 
@@ -28,11 +28,11 @@ impl MicroserviceRuntimeSettingsProvider {
 impl DiffSettings for MicroserviceRuntimeSettingsProvider {
     async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
         let url = format!(
-            "{}/v2/get-runtime-settings/?runtime=python&version={}",
+            "{}/v2/get-runtime-settings/?runtime=rust&version={}",
             self.base_url, version,
         )
-            .parse()?;
-        println!("Get runtime settings {:?}", url);
+        .parse()?;
+        tracing::debug!("Get runtime settings {:?}", url);
         let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
         Ok(response)
@@ -57,8 +57,8 @@ impl error::Error for HttpError {
 }
 
 async fn fetch_json<T>(url: hyper::Uri) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
+where
+    T: serde::de::DeserializeOwned,
 {
     // Create client
     let https = HttpsConnector::new();

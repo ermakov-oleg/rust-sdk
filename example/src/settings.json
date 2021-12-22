@@ -1,0 +1,11 @@
+[
+  {
+    "runtime": "rust",
+    "key": "SOME_KEY",
+    "priority": 0,
+    "filter": {
+      "context": "foo=bar;baz=quix"
+    },
+    "value": "value"
+  }
+]

@@ -6,13 +6,12 @@ use std::hash::Hash;
 use std::sync::RwLock;
 
 use lazy_static::lazy_static;
-use log::debug;
 use serde::de::DeserializeOwned;
 
-use crate::Context;
 use crate::entities::{Setting, SettingKey};
 use crate::filters::SettingsService;
 use crate::providers::{DiffSettings, FileProvider, MicroserviceRuntimeSettingsProvider};
+use crate::Context;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -49,11 +48,11 @@ impl RuntimeSettings {
     }
 
     pub async fn init(&self) {
-        self.refresh_from_file()
+        self.load_from_file()
     }
 
     pub async fn refresh(&self) -> Result<()> {
-        println!("Refresh settings ...");
+        tracing::debug!("Refresh settings ...");
         if let Some(mcs_provider) = &self.mcs_settings_provider {
             let version = {
                 let version_guard = &self.version.read().unwrap();
@@ -62,11 +61,11 @@ impl RuntimeSettings {
             let diff = match mcs_provider.get_settings(&version).await {
                 Ok(r) => r,
                 Err(err) => {
-                    eprintln!("Error: Could not update settings {}", err);
+                    tracing::error!("Error: Could not update settings {}", err);
                     return Err(err);
                 }
             };
-            debug!("New Settings {:?}", &diff);
+            tracing::trace!("New Settings {:?}", &diff);
 
             self.update_settings(diff.settings, diff.deleted);
 
@@ -76,23 +75,26 @@ impl RuntimeSettings {
             }
         }
 
-        println!("Settings refreshed");
+        tracing::debug!("Settings refreshed");
         Ok(())
     }
 
-    fn refresh_from_file(&self) {
-        println!("Refresh settings from file ...");
+    fn load_from_file(&self) {
+        tracing::debug!(
+            "Load settings from file {} ...",
+            RUNTIME_SETTINGS_FILE_PATH.to_string()
+        );
         let provider = FileProvider::new(RUNTIME_SETTINGS_FILE_PATH.to_string());
         match provider.read_settings() {
             Ok(settings) => self.update_settings(settings, vec![]),
             Err(err) => {
-                eprintln!(
+                tracing::error!(
                     "Error: Could not update settings from file: {} error: {}",
-                    *RUNTIME_SETTINGS_FILE_PATH, err
+                    *RUNTIME_SETTINGS_FILE_PATH,
+                    err
                 )
             }
         };
-        println!("Finish refresh settings from file");
     }
 
     fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
@@ -106,10 +108,10 @@ impl RuntimeSettings {
     }
 
     pub fn get<K: ?Sized, V>(&self, key: &K, ctx: &Context) -> Option<V>
-        where
-            String: Borrow<K>,
-            K: Hash + Eq,
-            V: DeserializeOwned + 'static,
+    where
+        String: Borrow<K>,
+        K: Hash + Eq,
+        V: DeserializeOwned + 'static,
     {
         let settings_guard = self.settings.read().unwrap();
         let mut value = match settings_guard.get(key) {
@@ -134,7 +136,7 @@ impl RuntimeSettings {
         value.and_then(|v| {
             serde_json::from_str(&v)
                 .map_err(|err| {
-                    eprintln!("Error when deserialize value {}", err);
+                    tracing::error!("Error when deserialize value {}", err);
                 })
                 .ok()
         })
@@ -234,7 +236,7 @@ mod tests {
                     make_ss("foo", 10, None),
                     make_ss("foo", 30, None),
                 ]
-            ), ])
+            ),])
         );
     }
 
@@ -254,7 +256,7 @@ mod tests {
                     make_ss("foo", 10, None),
                     make_ss("foo", 30, None),
                 ]
-            ), ])
+            ),])
         );
     }
 
@@ -278,7 +280,7 @@ mod tests {
                     make_ss("foo", 10, Some("new_value".to_string())),
                     make_ss("foo", 30, None),
                 ]
-            ), ])
+            ),])
         );
     }
 

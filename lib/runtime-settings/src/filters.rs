@@ -12,6 +12,7 @@ pub trait RSFilter: Send + Sync {
 }
 
 enum Filter {
+    Runtime(String),
     Application(Pattern),
     Server(Pattern),
     Host(Pattern),
@@ -93,6 +94,7 @@ impl MapPattern {
 impl RSFilter for Filter {
     fn check(&self, ctx: &Context) -> bool {
         match self {
+            Filter::Runtime(p) => p.eq("rust"),
             Filter::Application(p) => p.is_match(Some(&*ctx.application)),
             Filter::Server(p) => p.is_match(Some(&*ctx.server)),
             Filter::Host(p) => p.is_match(ctx.host.as_deref()),
@@ -110,6 +112,7 @@ impl RSFilter for Filter {
         matches!(
             self,
             Filter::Noop
+                | Filter::Runtime(_)
                 | Filter::Host(_)
                 | Filter::Application(_)
                 | Filter::Server(_)
@@ -144,6 +147,7 @@ pub struct SettingsService {
 impl SettingsService {
     pub fn new(setting: Setting) -> Self {
         let mut filters: Vec<Box<dyn RSFilter>> = vec![];
+        filters.push(Box::new(Filter::Runtime(setting.runtime.clone())));
         for item in setting.filter.clone() {
             filters.push(Box::new(Filter::from(item)));
         }
