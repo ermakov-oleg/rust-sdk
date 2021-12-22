@@ -1,5 +1,3 @@
-#![warn(rust_2018_idioms)]
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
@@ -7,10 +5,10 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tokio::{
     task,
-    time::{Duration, sleep},
+    time::{sleep, Duration},
 };
 
-use cian_settings::{Context, RuntimeSettings};
+use runtime_settings::{Context, RuntimeSettings};
 
 #[derive(Debug, Deserialize)]
 struct PGConnectionString {
@@ -50,7 +48,6 @@ async fn init_runtime_settings() -> Arc<RuntimeSettings> {
     runtime_settings.refresh().await.unwrap();
 
     let settings = Arc::new(runtime_settings);
-
     let settings_p = Arc::clone(&settings);
 
     task::spawn(async move {

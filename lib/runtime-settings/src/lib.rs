@@ -6,4 +6,3 @@ pub mod entities;
 mod filters;
 mod providers;
 mod rs;
-mod settings;
