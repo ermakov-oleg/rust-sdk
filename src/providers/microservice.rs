@@ -10,10 +10,9 @@ use crate::entities::RuntimeSettingsResponse;
 use crate::providers::Result;
 
 #[async_trait]
-pub trait DiffSettings {
+pub trait DiffSettings: Sync + Send {
     async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse>;
 }
-
 
 pub struct MicroserviceRuntimeSettingsProvider {
     base_url: String,

@@ -18,5 +18,3 @@ impl FileProvider {
         Ok(result)
     }
 }
-
-

@@ -17,8 +17,10 @@ use crate::providers::{DiffSettings, FileProvider, MicroserviceRuntimeSettingsPr
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 lazy_static! {
-    static ref RUNTIME_SETTINGS_BASE_URL: String = var("RUNTIME_SETTINGS_BASE_URL").unwrap_or("http://master.runtime-settings.dev3.cian.ru".to_string());
-    static ref RUNTIME_SETTINGS_FILE_PATH: String = var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or("./settings.json".to_string());
+    static ref RUNTIME_SETTINGS_BASE_URL: String = var("RUNTIME_SETTINGS_BASE_URL")
+        .unwrap_or_else(|_| "http://master.runtime-settings.dev3.cian.ru".to_string());
+    static ref RUNTIME_SETTINGS_FILE_PATH: String =
+        var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or_else(|_| "./settings.json".to_string());
 }
 
 pub struct RuntimeSettings {
@@ -46,10 +48,11 @@ impl RuntimeSettings {
         }
     }
 
-    pub async fn init(&mut self) {
+    pub async fn init(&self) {
         self.refresh_from_file()
     }
-    pub async fn refresh(&mut self) -> Result<()> {
+
+    pub async fn refresh(&self) -> Result<()> {
         println!("Refresh settings ...");
         if let Some(mcs_provider) = &self.mcs_settings_provider {
             let version = {
@@ -77,25 +80,23 @@ impl RuntimeSettings {
         Ok(())
     }
 
-    fn refresh_from_file(&mut self) {
+    fn refresh_from_file(&self) {
         println!("Refresh settings from file ...");
         let provider = FileProvider::new(RUNTIME_SETTINGS_FILE_PATH.to_string());
         match provider.read_settings() {
-            Ok(settings) => {
-                self.update_settings(settings, vec![])
-            },
+            Ok(settings) => self.update_settings(settings, vec![]),
             Err(err) => {
-                eprintln!("Error: Could not update settings from file: {} error: {}", *RUNTIME_SETTINGS_FILE_PATH, err)
-            },
+                eprintln!(
+                    "Error: Could not update settings from file: {} error: {}",
+                    *RUNTIME_SETTINGS_FILE_PATH, err
+                )
+            }
         };
         println!("Finish refresh settings from file");
     }
 
-    fn update_settings(&mut self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
-        let new_settings_services = new_settings
-            .into_iter()
-            .map(|s| SettingsService::new(s))
-            .collect();
+    fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
+        let new_settings_services = new_settings.into_iter().map(SettingsService::new).collect();
         {
             let mut settings_guard = self.settings.write().unwrap();
             let current_settings = settings_guard.borrow_mut();
@@ -103,7 +104,6 @@ impl RuntimeSettings {
             merge_settings(current_settings, new_settings_services);
         }
     }
-
 
     pub fn get<K: ?Sized, V>(&self, key: &K, ctx: &Context) -> Option<V>
         where
@@ -113,13 +113,11 @@ impl RuntimeSettings {
     {
         let settings_guard = self.settings.read().unwrap();
         let mut value = match settings_guard.get(key) {
-            Some(vss) => {
-                vss
-                    .iter()
-                    .rev()
-                    .find(|f| f.is_suitable(ctx))
-                    .and_then(|val| val.setting.value.clone())
-            },
+            Some(vss) => vss
+                .iter()
+                .rev()
+                .find(|f| f.is_suitable(ctx))
+                .and_then(|val| val.setting.value.clone()),
             None => None,
         };
 
@@ -128,11 +126,9 @@ impl RuntimeSettings {
             // otherwise serde_json::from_str may end up with an error.
             // I couldn't skip serialization for String :(
 
-            value = value.map(|v| {
-                match v.starts_with("\"") {
-                    true => v,
-                    false => format!("\"{}\"", v)
-                }
+            value = value.map(|v| match v.starts_with('\'') {
+                true => v,
+                false => format!("\"{}\"", v),
             })
         }
         value.and_then(|v| {
@@ -142,6 +138,12 @@ impl RuntimeSettings {
                 })
                 .ok()
         })
+    }
+}
+
+impl Default for RuntimeSettings {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -163,7 +165,7 @@ fn merge_settings(
     for new in new_settings {
         let entry = settings
             .entry(new.setting.key.clone())
-            .or_insert_with(|| vec![]);
+            .or_insert_with(Vec::new);
 
         match entry.binary_search_by(|item| item.setting.priority.cmp(&new.setting.priority)) {
             Ok(idx) => entry[idx] = new,
@@ -330,21 +332,20 @@ mod tests {
     async fn test_runtime_settings_refresh() {
         let settings_provider = TestSettingsProvider {
             data: RuntimeSettingsResponse {
-                settings: vec![
-                    Setting {
-                        key: "TEST_KEY".to_string(),
-                        priority: 0,
-                        value: Some("{\"key\": \"value\"}".to_string()),
-                        runtime: "rust".into(),
-                        filter: HashMap::new(),
-                    }
-                ],
+                settings: vec![Setting {
+                    key: "TEST_KEY".to_string(),
+                    priority: 0,
+                    value: Some("{\"key\": \"value\"}".to_string()),
+                    runtime: "rust".into(),
+                    filter: HashMap::new(),
+                }],
                 version: '1'.to_string(),
                 deleted: vec![],
             },
         };
 
-        let mut runtime_settings = RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
+        let runtime_settings =
+            RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
         let key = "TEST_KEY";
 
         // act
@@ -353,7 +354,6 @@ mod tests {
         runtime_settings.refresh().await.unwrap();
 
         let val2: Option<SomeData> = runtime_settings.get(key, &_make_ctx());
-
 
         // assert
         assert_eq!(val1, None);
@@ -375,18 +375,17 @@ mod tests {
                         priority: 0,
                         value: Some("{\"key\": \"wrong-value\"}".to_string()),
                         runtime: "rust".into(),
-                        filter: HashMap::from([
-                            ("application".to_string(), "foo".to_string())
-                        ]),
+                        filter: HashMap::from([("application".to_string(), "foo".to_string())]),
                     },
                     Setting {
                         key: "TEST_KEY".to_string(),
                         priority: 0,
                         value: Some("{\"key\": \"right-value\"}".to_string()),
                         runtime: "rust".into(),
-                        filter: HashMap::from([
-                            ("application".to_string(), "test-rust".to_string())
-                        ]),
+                        filter: HashMap::from([(
+                            "application".to_string(),
+                            "test-rust".to_string(),
+                        )]),
                     },
                 ],
                 version: '1'.to_string(),
@@ -394,7 +393,8 @@ mod tests {
             },
         };
 
-        let mut runtime_settings = RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
+        let runtime_settings =
+            RuntimeSettings::new_with_settings_provider(Box::new(settings_provider));
         let key = "TEST_KEY";
         runtime_settings.refresh().await.unwrap();
 

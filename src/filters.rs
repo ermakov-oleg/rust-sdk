@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::context::Context;
 use crate::entities::Setting;
 
-pub trait RSFilter {
+pub trait RSFilter: Send + Sync {
     fn check(&self, ctx: &Context) -> bool;
     fn is_static(&self) -> bool;
 }
@@ -107,31 +107,30 @@ impl RSFilter for Filter {
     }
 
     fn is_static(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Filter::Noop
-            | Filter::Host(_)
-            | Filter::Application(_)
-            | Filter::Server(_)
-            | Filter::Environment(_) => true,
-            _ => false,
-        }
+                | Filter::Host(_)
+                | Filter::Application(_)
+                | Filter::Server(_)
+                | Filter::Environment(_)
+        )
     }
 }
 
 // todo: move to try_from
 impl From<(String, String)> for Filter {
     fn from((key, value): (String, String)) -> Self {
-        let val = value.to_string();
         match key.as_str() {
-            "application" => Filter::Application(Pattern::new(val)),
-            "server" => Filter::Server(Pattern::new(val)),
-            "host" => Filter::Host(Pattern::new(val)),
-            "url" => Filter::Url(Pattern::new(val)),
-            "url_path" => Filter::UrlPath(Pattern::new(val)),
-            "email" => Filter::Email(Pattern::new(val)),
-            "ip" => Filter::Ip(Pattern::new(val)),
-            "environment" => Filter::Environment(MapPattern::new(val.split(';').collect())),
-            "context" => Filter::Context(MapPattern::new(val.split(';').collect())),
+            "application" => Filter::Application(Pattern::new(value)),
+            "server" => Filter::Server(Pattern::new(value)),
+            "host" => Filter::Host(Pattern::new(value)),
+            "url" => Filter::Url(Pattern::new(value)),
+            "url_path" => Filter::UrlPath(Pattern::new(value)),
+            "email" => Filter::Email(Pattern::new(value)),
+            "ip" => Filter::Ip(Pattern::new(value)),
+            "environment" => Filter::Environment(MapPattern::new(value.split(';').collect())),
+            "context" => Filter::Context(MapPattern::new(value.split(';').collect())),
             _ => Filter::Noop,
         }
     }
@@ -160,10 +159,11 @@ impl SettingsService {
     }
 }
 
-
 impl Debug for SettingsService {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SettingsService").field("setting", &self.setting).finish()
+        f.debug_struct("SettingsService")
+            .field("setting", &self.setting)
+            .finish()
     }
 }
 

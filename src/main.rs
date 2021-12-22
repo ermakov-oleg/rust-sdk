@@ -1,9 +1,14 @@
 #![warn(rust_2018_idioms)]
 
-
 use std::collections::HashMap;
+use std::error::Error;
+use std::sync::Arc;
 
 use serde::Deserialize;
+use tokio::{
+    task,
+    time::{Duration, sleep},
+};
 
 use cian_settings::{Context, RuntimeSettings};
 
@@ -15,17 +20,12 @@ struct PGConnectionString {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
-    let mut rs = RuntimeSettings::new();
-    rs.init().await;
-    rs.refresh().await.unwrap();
-
+    let rs = init_runtime_settings().await;
 
     let ctx = Context {
         application: "test-rust".into(),
         server: "test-server".into(),
-        environment: HashMap::from([
-            ("TEST".to_string(), "ermakov".to_string()),
-        ]),
+        environment: HashMap::from([("TEST".to_string(), "ermakov".to_string())]),
         host: None,
         url: None,
         url_path: None,
@@ -37,9 +37,35 @@ async fn main() -> Result<(), ()> {
     let _key = "postgres_connection/some_db";
     let key = "AB_EXPERIMENTS_TIMEOUT";
 
-    let val: Option<u32> = rs.get(key, &ctx);
+    loop {
+        let val: Option<u32> = rs.get(key, &ctx);
+        println!("Settings {}:{:#?}", key, val);
+        sleep(Duration::from_secs(5)).await;
+    }
+}
 
-    println!("Settings {}:{:#?}", key, val);
+async fn init_runtime_settings() -> Arc<RuntimeSettings> {
+    let runtime_settings = RuntimeSettings::new();
+    runtime_settings.init().await;
+    runtime_settings.refresh().await.unwrap();
 
-    Ok(())
+    let settings = Arc::new(runtime_settings);
+
+    let settings_p = Arc::clone(&settings);
+
+    task::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(10)).await;
+            println!("Update RS started");
+            let _ = settings_p
+                .refresh()
+                .await
+                .or_else::<Box<dyn Error>, _>(|e| {
+                    println!("Error when update RS {}", e);
+                    Ok(())
+                });
+        }
+    });
+
+    settings
 }
