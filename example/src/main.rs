@@ -1,5 +1,3 @@
-use serde::Deserialize;
-
 mod consts;
 mod settings;
 mod web;
