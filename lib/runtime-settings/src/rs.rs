@@ -89,9 +89,9 @@ impl RuntimeSettings {
             Ok(settings) => self.update_settings(settings, vec![]),
             Err(err) => {
                 tracing::error!(
-                    "Error: Could not update settings from file: {} error: {}",
+                    error = ?err,
+                    "Error: Could not update settings from file: {}",
                     *RUNTIME_SETTINGS_FILE_PATH,
-                    err
                 )
             }
         };

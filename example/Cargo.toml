@@ -5,20 +5,19 @@ edition = "2021"
 
 
 [dependencies]
+# async runtime
 tokio = { version = "1.13.0", features = ["full"] }
 
+# serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-
+# web
 axum = "0.4.3"
-
-runtime-settings = { path = "../lib/runtime-settings" }
-
 
 # Logs
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-log = "0.1.2"
-tracing-appender = "0.2.0"
-tracing-bunyan-formatter = "0.3.1"
+struct-log = { path = "../lib/struct-log" }
+
+
+runtime-settings = { path = "../lib/runtime-settings" }

@@ -1,0 +1,2 @@
+export RUST_LOG=debug,hyper=error
+# export JSON_LOG=true
