@@ -146,8 +146,8 @@ pub struct SettingsService {
 
 impl SettingsService {
     pub fn new(setting: Setting) -> Self {
-        let mut filters: Vec<Box<dyn RSFilter>> = vec![];
-        filters.push(Box::new(Filter::Runtime(setting.runtime.clone())));
+        let mut filters: Vec<Box<dyn RSFilter>> =
+            vec![Box::new(Filter::Runtime(setting.runtime.clone()))];
         for item in setting.filter.clone() {
             filters.push(Box::new(Filter::from(item)));
         }
