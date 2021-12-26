@@ -144,7 +144,6 @@ name = "example"
 version = "0.1.0"
 dependencies = [
  "axum",
- "lazy_static",
  "runtime-settings",
  "serde",
  "serde_json",

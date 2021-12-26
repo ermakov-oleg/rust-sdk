@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use tracing::instrument;
 
-use crate::settings;
+use runtime_settings;
+
+use crate::settings::get_context;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +23,7 @@ pub struct Request {
 #[instrument]
 pub async fn get_key_from_rs(Query(params): Query<Request>) -> Json<Result> {
     let key = params.key.unwrap_or_else(|| "SOME_KEY".to_string());
-    let value: Option<String> = settings::RUNTIME_SETTINGS.get(&key, &settings::get_context());
+    let value: Option<String> = runtime_settings::settings.get(&key, &get_context());
     let ser_value = to_string(&value).unwrap();
     let result = Result {
         key,
