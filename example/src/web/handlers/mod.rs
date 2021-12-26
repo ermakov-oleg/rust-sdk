@@ -1,3 +1,2 @@
-pub use health::{health, HealthResult};
-
-mod health;
+pub mod health;
+pub mod test_rs;

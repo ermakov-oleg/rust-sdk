@@ -20,4 +20,5 @@ tracing = "0.1"
 struct-log = { path = "../lib/struct-log" }
 
 
+lazy_static = "1.4.0"
 runtime-settings = { path = "../lib/runtime-settings" }

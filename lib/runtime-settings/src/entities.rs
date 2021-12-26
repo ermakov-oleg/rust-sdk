@@ -18,7 +18,7 @@ pub struct Setting {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub(crate) struct SettingKey {
+pub struct SettingKey {
     pub(crate) key: String,
     pub(crate) priority: u32,
 }

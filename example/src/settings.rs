@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::Arc;
 
+use lazy_static::lazy_static;
 use tokio::task;
 use tokio::time::{sleep, Duration};
 
@@ -9,18 +9,18 @@ use runtime_settings::{Context, RuntimeSettings};
 
 use crate::consts::APPLICATION_NAME;
 
-pub async fn setup() -> Arc<RuntimeSettings> {
-    let runtime_settings = RuntimeSettings::new();
-    runtime_settings.init().await;
-    runtime_settings.refresh().await.unwrap();
+lazy_static! {
+    pub static ref RUNTIME_SETTINGS: RuntimeSettings = RuntimeSettings::new();
+}
 
-    let settings = Arc::new(runtime_settings);
-    let settings_p = Arc::clone(&settings);
+pub async fn setup() {
+    RUNTIME_SETTINGS.init().await;
+    RUNTIME_SETTINGS.refresh().await.unwrap();
 
     task::spawn(async move {
         loop {
             sleep(Duration::from_secs(10)).await;
-            let _ = settings_p
+            let _ = RUNTIME_SETTINGS
                 .refresh()
                 .await
                 .or_else::<Box<dyn Error>, _>(|e| {
@@ -29,8 +29,6 @@ pub async fn setup() -> Arc<RuntimeSettings> {
                 });
         }
     });
-
-    settings
 }
 
 pub fn get_context() -> Context {

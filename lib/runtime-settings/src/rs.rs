@@ -10,7 +10,9 @@ use serde::de::DeserializeOwned;
 
 use crate::entities::{Setting, SettingKey};
 use crate::filters::SettingsService;
-use crate::providers::{DiffSettings, FileProvider, MicroserviceRuntimeSettingsProvider};
+use crate::providers::{
+    FileProvider, MicroserviceRuntimeSettingsProvider, RuntimeSettingsState, SettingsProvider,
+};
 use crate::Context;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -19,13 +21,46 @@ lazy_static! {
     static ref RUNTIME_SETTINGS_BASE_URL: String = var("RUNTIME_SETTINGS_BASE_URL")
         .unwrap_or_else(|_| "http://master.runtime-settings.dev3.cian.ru".to_string());
     static ref RUNTIME_SETTINGS_FILE_PATH: String =
-        var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or_else(|_| "./settings.json".to_string());
+        var("RUNTIME_SETTINGS_FILE_PATH").unwrap_or_else(|_| "settings.json".to_string());
 }
 
 pub struct RuntimeSettings {
-    settings: RwLock<HashMap<String, Vec<SettingsService>>>,
-    mcs_settings_provider: Option<Box<dyn DiffSettings>>,
-    version: RwLock<String>,
+    settings_provider: Option<Box<dyn SettingsProvider>>,
+    state: RwLock<State>,
+}
+
+struct State {
+    version: String,
+    settings: HashMap<String, Vec<SettingsService>>,
+}
+
+impl State {
+    fn new() -> Self {
+        State {
+            version: "0".to_string(),
+            settings: HashMap::new(),
+        }
+    }
+}
+
+impl RuntimeSettingsState for RwLock<State> {
+    fn get_version(&self) -> String {
+        let state_guard = &self.read().unwrap();
+        (*state_guard.version).to_string()
+    }
+
+    fn set_version(&self, version: String) {
+        let mut state_guard = self.write().unwrap();
+        (*state_guard).version = version;
+    }
+
+    fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
+        let new_settings_services = new_settings.into_iter().map(SettingsService::new).collect();
+        let mut state_guard = self.write().unwrap();
+        let current_settings = state_guard.settings.borrow_mut();
+        delete_settings(current_settings, to_delete);
+        merge_settings(current_settings, new_settings_services);
+    }
 }
 
 impl RuntimeSettings {
@@ -33,78 +68,34 @@ impl RuntimeSettings {
         let mcs_settings_provider =
             MicroserviceRuntimeSettingsProvider::new(RUNTIME_SETTINGS_BASE_URL.to_string());
         Self {
-            settings: RwLock::new(HashMap::new()),
-            version: RwLock::from("0".to_string()),
-            mcs_settings_provider: Some(Box::new(mcs_settings_provider)),
+            state: RwLock::new(State::new()),
+            settings_provider: Some(Box::new(mcs_settings_provider)),
         }
     }
 
-    pub fn new_with_settings_provider(provider: Box<dyn DiffSettings>) -> Self {
+    pub fn new_with_settings_provider(provider: Box<dyn SettingsProvider>) -> Self {
         Self {
-            settings: RwLock::new(HashMap::new()),
-            version: RwLock::from("0".to_string()),
-            mcs_settings_provider: Some(provider),
+            state: RwLock::new(State::new()),
+            settings_provider: Some(provider),
         }
     }
 
     pub async fn init(&self) {
-        self.load_from_file()
+        self.load_from_file().await
     }
 
     pub async fn refresh(&self) -> Result<()> {
-        tracing::debug!("Refresh settings ...");
-        if let Some(mcs_provider) = &self.mcs_settings_provider {
-            let version = {
-                let version_guard = &self.version.read().unwrap();
-                (*version_guard).clone()
-            };
-            let diff = match mcs_provider.get_settings(&version).await {
-                Ok(r) => r,
-                Err(err) => {
-                    tracing::error!("Error: Could not update settings {}", err);
-                    return Err(err);
-                }
-            };
-            tracing::trace!("New Settings {:?}", &diff);
-
-            self.update_settings(diff.settings, diff.deleted);
-
-            {
-                let mut version_guard = self.version.write().unwrap();
-                *version_guard = diff.version;
-            }
+        if let Some(settings_provider) = &self.settings_provider {
+            settings_provider.update_settings(&self.state).await;
         }
 
         tracing::debug!("Settings refreshed");
         Ok(())
     }
 
-    fn load_from_file(&self) {
-        tracing::debug!(
-            "Load settings from file {} ...",
-            RUNTIME_SETTINGS_FILE_PATH.to_string()
-        );
+    async fn load_from_file(&self) {
         let provider = FileProvider::new(RUNTIME_SETTINGS_FILE_PATH.to_string());
-        match provider.read_settings() {
-            Ok(settings) => self.update_settings(settings, vec![]),
-            Err(err) => {
-                tracing::error!(
-                    error = ?err,
-                    "Error: Could not update settings from file: {}",
-                    *RUNTIME_SETTINGS_FILE_PATH,
-                )
-            }
-        };
-    }
-
-    fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
-        let new_settings_services = new_settings.into_iter().map(SettingsService::new).collect();
-        {
-            let mut settings_guard = self.settings.write().unwrap();
-            let current_settings = settings_guard.borrow_mut();
-            delete_settings(current_settings, to_delete);
-            merge_settings(current_settings, new_settings_services);
-        }
+        provider.update_settings(&self.state).await;
     }
 
     pub fn get<K: ?Sized, V>(&self, key: &K, ctx: &Context) -> Option<V>
@@ -113,8 +104,8 @@ impl RuntimeSettings {
         K: Hash + Eq,
         V: DeserializeOwned + 'static,
     {
-        let settings_guard = self.settings.read().unwrap();
-        let mut value = match settings_guard.get(key) {
+        let state_guard = self.state.read().unwrap();
+        let mut value = match state_guard.settings.get(key) {
             Some(vss) => vss
                 .iter()
                 .rev()
@@ -184,8 +175,6 @@ mod tests {
     use crate::entities::{RuntimeSettingsResponse, Setting};
 
     use super::*;
-
-    type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
     #[derive(Deserialize, Debug, PartialEq)]
     struct SomeData {
@@ -324,9 +313,10 @@ mod tests {
     }
 
     #[async_trait]
-    impl DiffSettings for TestSettingsProvider {
-        async fn get_settings(&self, _version: &str) -> Result<RuntimeSettingsResponse> {
-            Ok(self.data.clone())
+    impl SettingsProvider for TestSettingsProvider {
+        async fn update_settings(&self, state: &dyn RuntimeSettingsState) {
+            state.update_settings(self.data.settings.clone(), self.data.deleted.clone());
+            state.set_version(self.data.version.clone());
         }
     }
 

@@ -7,12 +7,7 @@ use hyper::Client;
 use hyper_tls::HttpsConnector;
 
 use crate::entities::RuntimeSettingsResponse;
-use crate::providers::Result;
-
-#[async_trait]
-pub trait DiffSettings: Sync + Send {
-    async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse>;
-}
+use crate::providers::{Result, RuntimeSettingsState, SettingsProvider};
 
 pub struct MicroserviceRuntimeSettingsProvider {
     base_url: String,
@@ -22,10 +17,7 @@ impl MicroserviceRuntimeSettingsProvider {
     pub fn new(base_url: String) -> Self {
         MicroserviceRuntimeSettingsProvider { base_url }
     }
-}
 
-#[async_trait]
-impl DiffSettings for MicroserviceRuntimeSettingsProvider {
     async fn get_settings(&self, version: &str) -> Result<RuntimeSettingsResponse> {
         let url = format!(
             "{}/v2/get-runtime-settings/?runtime=rust&version={}",
@@ -36,6 +28,24 @@ impl DiffSettings for MicroserviceRuntimeSettingsProvider {
         let response: RuntimeSettingsResponse = fetch_json(url).await?;
 
         Ok(response)
+    }
+}
+
+#[async_trait]
+impl SettingsProvider for MicroserviceRuntimeSettingsProvider {
+    async fn update_settings(&self, state: &dyn RuntimeSettingsState) {
+        tracing::debug!("Refresh settings ...");
+        let version = state.get_version();
+        let diff = match self.get_settings(&version).await {
+            Ok(r) => r,
+            Err(err) => {
+                tracing::error!("Error: Could not update settings {}", err);
+                return;
+            }
+        };
+        tracing::trace!("New Settings {:?}", &diff);
+        state.update_settings(diff.settings, diff.deleted);
+        state.set_version(diff.version);
     }
 }
 
