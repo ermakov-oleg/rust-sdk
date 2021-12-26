@@ -1,4 +1,3 @@
-use runtime_settings;
 use struct_log::setup_logger;
 
 use crate::consts::{APPLICATION_NAME, VERSION};
