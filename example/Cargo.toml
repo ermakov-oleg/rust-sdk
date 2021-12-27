@@ -19,4 +19,7 @@ axum = "0.4.3"
 tracing = "0.1"
 struct-log = { path = "../lib/struct-log" }
 
+# cli
+structopt = "0.3.25"
+
 runtime-settings = { path = "../lib/runtime-settings" }
