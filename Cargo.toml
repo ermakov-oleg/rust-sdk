@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "lib/struct-log",
+    "lib/runtime-settings",
+    "example"
+]
