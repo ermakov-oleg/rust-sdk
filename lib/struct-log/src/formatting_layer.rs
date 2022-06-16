@@ -27,16 +27,18 @@ const LINENO: &str = "lineno";
 const FILE: &str = "file";
 const VERSION: &str = "version";
 
-const RESERVED_FIELDS: [&str; 9] = [
-    LEVEL,
-    HOSTNAME,
-    MESSAGE_TYPE,
+const RESERVED_FIELDS: [&str; 11] = [
     DATE,
-    MESSAGE,
+    MESSAGE_TYPE,
     RUNTIME,
     APPLICATION,
+    LEVEL,
+    HOSTNAME,
+    MESSAGE,
+    LOGGER,
     LINENO,
     FILE,
+    VERSION,
 ];
 
 impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
