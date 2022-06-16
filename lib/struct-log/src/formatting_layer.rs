@@ -27,16 +27,18 @@ const LINENO: &str = "lineno";
 const FILE: &str = "file";
 const VERSION: &str = "version";
 
-const RESERVED_FIELDS: [&str; 9] = [
-    LEVEL,
-    HOSTNAME,
-    MESSAGE_TYPE,
+const RESERVED_FIELDS: [&str; 11] = [
     DATE,
-    MESSAGE,
+    MESSAGE_TYPE,
     RUNTIME,
     APPLICATION,
+    LEVEL,
+    HOSTNAME,
+    MESSAGE,
+    LOGGER,
     LINENO,
     FILE,
+    VERSION,
 ];
 
 impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
@@ -83,8 +85,9 @@ where
     S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
     W: for<'a> MakeWriter<'a> + 'static,
 {
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+    fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
         let mut event_visitor = JsonStorage::default();
+        let current_span = ctx.lookup_current();
         event.record(&mut event_visitor);
 
         let format = || {
@@ -103,6 +106,18 @@ where
                 .filter(|(&key, _)| !RESERVED_FIELDS.contains(&key))
             {
                 map_serializer.serialize_entry(key, value)?;
+            }
+
+            // Add all the fields from the current span, if we have one.
+            if let Some(span) = &current_span {
+                let extensions = span.extensions();
+                if let Some(visitor) = extensions.get::<JsonStorage>() {
+                    for (key, value) in visitor.values() {
+                        if !RESERVED_FIELDS.contains(key) {
+                            map_serializer.serialize_entry(key, value)?;
+                        }
+                    }
+                }
             }
 
             map_serializer.end()?;
