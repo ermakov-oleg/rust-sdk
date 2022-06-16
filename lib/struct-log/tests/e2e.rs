@@ -52,6 +52,13 @@ fn run_and_get_output<F: Fn()>(action: F) -> Vec<Value> {
 
 // Instrumented code to be run to test the behaviour of the tracing instrumentation.
 fn test_action() {
+    let span = span!(Level::TRACE, "my span", span_field = "quux");
+    let _enter = span.enter();
+
+    let inner_span = span!(Level::TRACE, "my inner span", inner_span_field = "quuux");
+    inner_span.follows_from(&span);
+    let _inner_span_enter = inner_span.enter();
+
     info!("foo");
     error!(foo = "baz", "bar");
 }
@@ -82,6 +89,8 @@ fn each_line_has_the_base_fields() {
         assert!(record.get("container_id").is_some());
         assert!(record.get("version").is_some());
         assert!(record.get("application").is_some());
+        assert_eq!(record.get("span_field"), Some(&Value::String("quux".to_owned())));
+        assert_eq!(record.get("inner_span_field"), Some(&Value::String("quuux".to_owned())));
     }
 }
 
