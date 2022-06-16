@@ -16,7 +16,6 @@ pub struct JsonLogLayer<W: for<'a> MakeWriter<'a> + 'static> {
 }
 
 const DATE: &str = "date";
-const MESSAGE_TYPE: &str = "message_type"; // todo: set type!
 const RUNTIME: &str = "runtime";
 const APPLICATION: &str = "application";
 const LEVEL: &str = "level";
@@ -27,9 +26,8 @@ const LINENO: &str = "lineno";
 const FILE: &str = "file";
 const VERSION: &str = "version";
 
-const RESERVED_FIELDS: [&str; 11] = [
+const RESERVED_FIELDS: [&str; 10] = [
     DATE,
-    MESSAGE_TYPE,
     RUNTIME,
     APPLICATION,
     LEVEL,
