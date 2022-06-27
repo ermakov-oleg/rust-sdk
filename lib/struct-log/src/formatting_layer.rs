@@ -71,7 +71,6 @@ impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
         map_serializer.serialize_entry(LINENO, &event.metadata().line())?;
         map_serializer.serialize_entry(FILE, &event.metadata().file())?;
         map_serializer.serialize_entry(MESSAGE, &message)?;
-        map_serializer.serialize_entry(MESSAGE_TYPE, "app")?;
         Ok(())
     }
 
@@ -92,6 +91,7 @@ where
 
         let format = || {
             let mut buffer = Vec::new();
+            let mut message_type_provided = false;
 
             let mut serializer = serde_json::Serializer::new(&mut buffer);
             let mut map_serializer = serializer.serialize_map(None)?;
@@ -105,6 +105,9 @@ where
                 .iter()
                 .filter(|(&key, _)| !RESERVED_FIELDS.contains(&key))
             {
+                if key.eq(&MESSAGE_TYPE) {
+                    message_type_provided = true
+                }
                 map_serializer.serialize_entry(key, value)?;
             }
 
@@ -113,11 +116,17 @@ where
                 let extensions = span.extensions();
                 if let Some(visitor) = extensions.get::<JsonStorage>() {
                     for (key, value) in visitor.values() {
+                        if key.eq(&MESSAGE_TYPE) {
+                            message_type_provided = true
+                        }
                         if !RESERVED_FIELDS.contains(key) {
                             map_serializer.serialize_entry(key, value)?;
                         }
                     }
                 }
+            }
+            if !message_type_provided {
+                map_serializer.serialize_entry(MESSAGE_TYPE, "app")?;
             }
 
             map_serializer.end()?;
