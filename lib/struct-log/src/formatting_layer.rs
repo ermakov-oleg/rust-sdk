@@ -25,6 +25,7 @@ const LOGGER: &str = "logger";
 const LINENO: &str = "lineno";
 const FILE: &str = "file";
 const VERSION: &str = "version";
+const MESSAGE_TYPE: &str = "message_type";
 
 const RESERVED_FIELDS: [&str; 10] = [
     DATE,
@@ -70,6 +71,7 @@ impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
         map_serializer.serialize_entry(LINENO, &event.metadata().line())?;
         map_serializer.serialize_entry(FILE, &event.metadata().file())?;
         map_serializer.serialize_entry(MESSAGE, &message)?;
+        map_serializer.serialize_entry(MESSAGE_TYPE, "app")?;
         Ok(())
     }
 

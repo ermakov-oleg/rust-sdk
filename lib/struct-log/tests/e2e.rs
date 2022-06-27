@@ -89,8 +89,18 @@ fn each_line_has_the_base_fields() {
         assert!(record.get("container_id").is_some());
         assert!(record.get("version").is_some());
         assert!(record.get("application").is_some());
-        assert_eq!(record.get("span_field"), Some(&Value::String("quux".to_owned())));
-        assert_eq!(record.get("inner_span_field"), Some(&Value::String("quuux".to_owned())));
+        assert_eq!(
+            record.get("span_field"),
+            Some(&Value::String("quux".to_owned()))
+        );
+        assert_eq!(
+            record.get("message_type"),
+            Some(&Value::String("app".to_owned()))
+        );
+        assert_eq!(
+            record.get("inner_span_field"),
+            Some(&Value::String("quuux".to_owned()))
+        );
     }
 }
 
