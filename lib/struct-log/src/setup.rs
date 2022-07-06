@@ -7,6 +7,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::formatting_layer::JsonLogLayer;
+use crate::tracing::init_tracer;
 
 pub fn setup_logger(application_name: String, version: String) -> Option<WorkerGuard> {
     if !env::var("JSON_LOG").map_or(false, |s| s.parse().unwrap_or_default()) {
@@ -17,6 +18,9 @@ pub fn setup_logger(application_name: String, version: String) -> Option<WorkerG
     // Redirect the logs from log library to tracing's subscribers.
     LogTracer::init().expect("Unable to setup log tracer!");
 
+    let jaeger_tracer = init_tracer().expect("Unable to setup tracing");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(jaeger_tracer);
+
     // Non-blocking stdout writer
     let (non_blocking_writer, guard) = tracing_appender::non_blocking(std::io::stdout());
 
@@ -24,7 +28,8 @@ pub fn setup_logger(application_name: String, version: String) -> Option<WorkerG
     let subscriber = Registry::default()
         .with(EnvFilter::from_default_env())
         .with(JsonStorageLayer)
-        .with(formatting_layer);
+        .with(formatting_layer)
+        .with(otel_layer);
     tracing::subscriber::set_global_default(subscriber).unwrap();
     Some(guard)
 }
