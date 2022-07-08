@@ -26,8 +26,8 @@ mod propagator {
     use std::borrow::Cow;
     use std::str::FromStr;
 
-    const JAEGER_HEADER: &str = "X-Trace-Id";
-    const JAEGER_BAGGAGE_PREFIX: &str = "X-Trace-ctx-";
+    const JAEGER_HEADER: &str = "x-trace-id";
+    const JAEGER_BAGGAGE_PREFIX: &str = "x-trace-ctx-";
     const DEPRECATED_PARENT_SPAN: &str = "0";
 
     const TRACE_FLAG_DEBUG: TraceFlags = TraceFlags::new(0x04);
