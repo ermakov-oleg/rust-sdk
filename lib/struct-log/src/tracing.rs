@@ -3,11 +3,12 @@ use opentelemetry::{global, sdk, trace::TraceError};
 pub fn init_tracer() -> Result<sdk::trace::Tracer, TraceError> {
     global::set_text_map_propagator(propagator::Propagator::new());
 
+    let agent_endpoint = format!("{}:6831", option_env!("HOST_IP").unwrap_or("127.0.0.1"));
+
+    tracing::warn!("Tracing connect endpoint {}", &agent_endpoint);
+
     opentelemetry_jaeger::new_pipeline()
-        .with_agent_endpoint(format!(
-            "{}:6831",
-            option_env!("HOST_IP").unwrap_or("127.0.0.1")
-        ))
+        .with_agent_endpoint(agent_endpoint)
         .with_service_name(env!("CARGO_PKG_NAME"))
         .with_trace_config(sdk::trace::config().with_sampler(sdk::trace::Sampler::AlwaysOn))
         .install_batch(opentelemetry::runtime::Tokio)
