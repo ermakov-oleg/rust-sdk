@@ -18,7 +18,7 @@ pub fn setup_logger(application_name: String, version: String) -> Option<WorkerG
     // Redirect the logs from log library to tracing's subscribers.
     LogTracer::init().expect("Unable to setup log tracer!");
 
-    let jaeger_tracer = init_tracer().expect("Unable to setup tracing");
+    let jaeger_tracer = init_tracer(&application_name).expect("Unable to setup tracing");
     let otel_layer = tracing_opentelemetry::layer().with_tracer(jaeger_tracer);
 
     // Non-blocking stdout writer
