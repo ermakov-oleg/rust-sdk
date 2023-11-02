@@ -35,7 +35,7 @@ struct Pattern {
 impl Pattern {
     fn new(pattern: String) -> Self {
         Self {
-            pattern: Regex::new((&format!("^{}$", pattern)).as_ref()).unwrap(),
+            pattern: Regex::new(&format!("^{}$", pattern)).unwrap(),
         }
     }
 
@@ -58,10 +58,7 @@ impl MapPattern {
         for pattern_raw in patterns_raw {
             let items: Vec<&str> = pattern_raw.splitn(2, '=').collect();
             let pattern = match items[..] {
-                [key, val] => (
-                    key.into(),
-                    Regex::new((&format!("^{}$", val)).as_ref()).unwrap(),
-                ),
+                [key, val] => (key.into(), Regex::new(&format!("^{}$", val)).unwrap()),
                 _ => unimplemented!(), // todo: error
             };
             patterns.push(pattern);
@@ -159,7 +156,7 @@ impl SettingsService {
     }
 
     pub fn is_suitable(&self, ctx: &Context) -> bool {
-        (&self.filters).iter().all(|filter| filter.check(ctx))
+        self.filters.iter().all(|filter| filter.check(ctx))
     }
 }
 

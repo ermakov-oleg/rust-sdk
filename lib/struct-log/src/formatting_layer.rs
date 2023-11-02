@@ -145,11 +145,10 @@ fn format_event_message(event: &Event, event_visitor: &JsonStorage<'_>) -> Strin
     let message = event_visitor
         .values()
         .get("message")
-        .map(|v| match v {
+        .and_then(|v| match v {
             Value::String(s) => Some(s.as_str()),
             _ => None,
         })
-        .flatten()
         .unwrap_or_else(|| event.metadata().target())
         .to_owned();
 

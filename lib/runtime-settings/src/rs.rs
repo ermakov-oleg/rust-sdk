@@ -51,7 +51,7 @@ impl RuntimeSettingsState for RwLock<State> {
 
     fn set_version(&self, version: String) {
         let mut state_guard = self.write().unwrap();
-        (*state_guard).version = version;
+        state_guard.version = version;
     }
 
     fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>) {
@@ -156,9 +156,7 @@ fn merge_settings(
     new_settings: Vec<SettingsService>,
 ) {
     for new in new_settings {
-        let entry = settings
-            .entry(new.setting.key.clone())
-            .or_insert_with(Vec::new);
+        let entry = settings.entry(new.setting.key.clone()).or_default();
 
         match entry.binary_search_by(|item| item.setting.priority.cmp(&new.setting.priority)) {
             Ok(idx) => entry[idx] = new,

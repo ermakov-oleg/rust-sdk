@@ -84,7 +84,7 @@ where
 
     if !parts.status.is_success() {
         return Err(Box::new(HttpError {
-            error: String::from_utf8_lossy(&*body).into_owned(),
+            error: String::from_utf8_lossy(&body).into_owned(),
         }));
     }
 

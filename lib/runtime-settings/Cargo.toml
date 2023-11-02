@@ -5,20 +5,20 @@ authors = ["o.ermakov <oleg@ermakov.cc>"]
 edition = "2021"
 
 [dependencies]
-hyper = { version = "0.14.14", features = ["client", "http1"]}
-hyper-tls = "0.5.0"
-tokio = { version = "1.13.0", features = ["fs"]}
-async-trait = "0.1.30"
-bytes="0.5"
+hyper = { version = "0.14", features = ["client", "http1"]}
+hyper-tls = "0.5"
+tokio = { version = "1.16", features = ["fs"]}
+async-trait = "0.1"
+bytes="1.5"
 
 tracing = "0.1"
-lazy_static = "1.4.0"
+lazy_static = "1.4"
 
 serde = { version = "1.0", features = ["derive"] }
 
 serde_json ="1.0"
 
-regex = "1"
+regex = "1.10"
 
 [dev-dependencies]
-tokio = {version = "1.13.0", features = ["macros"]}
+tokio = {version = "1.16", features = ["macros"]}
