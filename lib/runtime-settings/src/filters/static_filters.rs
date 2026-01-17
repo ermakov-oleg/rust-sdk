@@ -66,9 +66,49 @@ impl StaticFilter for McsRunEnvFilter {
     }
 }
 
-// Placeholder structs for other filters (to be implemented later)
-#[allow(dead_code)]
+/// Helper to parse "KEY1=value1,KEY2=value2" format and check against a map
+fn check_map_filter(
+    pattern: &str,
+    map: &std::collections::HashMap<String, String>,
+) -> FilterResult {
+    for pair in pattern.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = pair.splitn(2, '=').collect();
+        if parts.len() != 2 {
+            return FilterResult::NoMatch;
+        }
+        let key = parts[0].trim();
+        let value_pattern = parts[1].trim();
+
+        match map.get(key) {
+            Some(actual_value) => {
+                if check_regex(value_pattern, actual_value) != FilterResult::Match {
+                    return FilterResult::NoMatch;
+                }
+            }
+            None => return FilterResult::NoMatch,
+        }
+    }
+    FilterResult::Match
+}
+
+/// environment: "KEY1=val1,KEY2=val2" against ctx.environment
 pub struct EnvironmentFilter;
+
+impl StaticFilter for EnvironmentFilter {
+    fn name(&self) -> &'static str {
+        "environment"
+    }
+
+    fn check(&self, pattern: &str, ctx: &StaticContext) -> FilterResult {
+        check_map_filter(pattern, &ctx.environment)
+    }
+}
+
+// Placeholder structs for other filters (to be implemented later)
 #[allow(dead_code)]
 pub struct LibraryVersionFilter;
 
@@ -152,5 +192,39 @@ mod tests {
         let ctx = make_static_ctx("my-service-prod", "server1");
         // Pattern "service" should NOT match "my-service-prod" due to anchoring
         assert_eq!(filter.check("service", &ctx), FilterResult::NoMatch);
+    }
+
+    #[test]
+    fn test_environment_filter_single_match() {
+        let filter = EnvironmentFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.environment.insert("ENV".to_string(), "prod".to_string());
+        assert_eq!(filter.check("ENV=prod", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_environment_filter_multiple_match() {
+        let filter = EnvironmentFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.environment.insert("ENV".to_string(), "prod".to_string());
+        ctx.environment.insert("DEBUG".to_string(), "false".to_string());
+        assert_eq!(filter.check("ENV=prod,DEBUG=false", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_environment_filter_partial_no_match() {
+        let filter = EnvironmentFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.environment.insert("ENV".to_string(), "prod".to_string());
+        // DEBUG is missing
+        assert_eq!(filter.check("ENV=prod,DEBUG=false", &ctx), FilterResult::NoMatch);
+    }
+
+    #[test]
+    fn test_environment_filter_regex_value() {
+        let filter = EnvironmentFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.environment.insert("ENV".to_string(), "production".to_string());
+        assert_eq!(filter.check("ENV=prod.*", &ctx), FilterResult::Match);
     }
 }
