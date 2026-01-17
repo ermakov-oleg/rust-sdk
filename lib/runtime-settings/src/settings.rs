@@ -4,7 +4,7 @@
 use crate::context::{Context, Request, StaticContext};
 use crate::entities::Setting;
 use crate::error::SettingsError;
-use crate::filters::{check_static_filters};
+use crate::filters::check_static_filters;
 use crate::providers::{
     EnvProvider, FileProvider, McsProvider, ProviderResponse, SettingsProvider,
 };
@@ -16,7 +16,7 @@ use semver::Version;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tokio::sync::RwLock;
+use std::sync::RwLock;
 
 /// Internal state of RuntimeSettings
 struct SettingsState {
@@ -58,7 +58,7 @@ impl RuntimeSettings {
                         settings_count = response.settings.len(),
                         "Loaded settings from provider"
                     );
-                    self.merge_settings(response).await;
+                    self.merge_settings(response);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -79,7 +79,7 @@ impl RuntimeSettings {
         for provider in &self.providers {
             if provider.name() == "mcs" {
                 let version = {
-                    let state = self.state.read().await;
+                    let state = self.state.read().unwrap();
                     state.version.clone()
                 };
 
@@ -91,7 +91,7 @@ impl RuntimeSettings {
                             new_version = %response.version,
                             "Refreshed settings from MCS"
                         );
-                        self.merge_settings(response).await;
+                        self.merge_settings(response);
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, "Failed to refresh settings from MCS");
@@ -104,7 +104,7 @@ impl RuntimeSettings {
         self.secrets.refresh().await?;
 
         // Check watchers
-        let current_values = self.collect_current_values().await;
+        let current_values = self.collect_current_values();
         self.watchers.check(&current_values).await;
 
         Ok(())
@@ -198,8 +198,7 @@ impl RuntimeSettings {
 
     /// Internal get with explicit context
     fn get_internal<T: DeserializeOwned>(&self, key: &str, ctx: &Context) -> Option<T> {
-        // Use block_on to read from async RwLock
-        let state = futures::executor::block_on(self.state.read());
+        let state = self.state.read().unwrap();
 
         let settings = state.settings.get(key)?;
 
@@ -226,8 +225,8 @@ impl RuntimeSettings {
     }
 
     /// Merge provider response into state
-    async fn merge_settings(&self, response: ProviderResponse) {
-        let mut state = self.state.write().await;
+    fn merge_settings(&self, response: ProviderResponse) {
+        let mut state = self.state.write().unwrap();
 
         // Process deleted settings first
         for deleted in &response.deleted {
@@ -277,8 +276,8 @@ impl RuntimeSettings {
     }
 
     /// Collect current values for watched settings
-    async fn collect_current_values(&self) -> HashMap<String, serde_json::Value> {
-        let state = self.state.read().await;
+    fn collect_current_values(&self) -> HashMap<String, serde_json::Value> {
+        let state = self.state.read().unwrap();
         let mut values = HashMap::new();
 
         // Get effective context
@@ -511,8 +510,8 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[tokio::test]
-    async fn test_merge_settings_empty_settings() {
+    #[test]
+    fn test_merge_settings_empty_settings() {
         let settings = RuntimeSettings::builder()
             .application("test-app")
             .mcs_enabled(false)
@@ -530,9 +529,9 @@ mod tests {
             version: "1".to_string(),
         };
 
-        settings.merge_settings(response).await;
+        settings.merge_settings(response);
 
-        let state = settings.state.read().await;
+        let state = settings.state.read().unwrap();
         assert_eq!(state.version, "1");
         assert!(state.settings.contains_key("MY_KEY"));
         assert_eq!(state.settings["MY_KEY"].len(), 1);
@@ -542,8 +541,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_merge_settings_priority_order() {
+    #[test]
+    fn test_merge_settings_priority_order() {
         let settings = RuntimeSettings::builder()
             .application("test-app")
             .mcs_enabled(false)
@@ -561,7 +560,7 @@ mod tests {
             deleted: vec![],
             version: "1".to_string(),
         };
-        settings.merge_settings(response1).await;
+        settings.merge_settings(response1);
 
         // Add high priority setting
         let response2 = ProviderResponse {
@@ -574,17 +573,17 @@ mod tests {
             deleted: vec![],
             version: "2".to_string(),
         };
-        settings.merge_settings(response2).await;
+        settings.merge_settings(response2);
 
-        let state = settings.state.read().await;
+        let state = settings.state.read().unwrap();
         assert_eq!(state.settings["MY_KEY"].len(), 2);
         // Highest priority should be first
         assert_eq!(state.settings["MY_KEY"][0].priority, 100);
         assert_eq!(state.settings["MY_KEY"][1].priority, 10);
     }
 
-    #[tokio::test]
-    async fn test_get_internal_returns_highest_priority() {
+    #[test]
+    fn test_get_internal_returns_highest_priority() {
         let settings = RuntimeSettings::builder()
             .application("test-app")
             .mcs_enabled(false)
@@ -610,7 +609,7 @@ mod tests {
             deleted: vec![],
             version: "1".to_string(),
         };
-        settings.merge_settings(response).await;
+        settings.merge_settings(response);
 
         let ctx = Context {
             application: "test-app".to_string(),
@@ -642,7 +641,7 @@ mod tests {
             deleted: vec![],
             version: "1".to_string(),
         };
-        settings.merge_settings(response).await;
+        settings.merge_settings(response);
 
         let ctx = Context {
             application: "test-app".to_string(),
