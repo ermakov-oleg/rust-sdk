@@ -1,12 +1,9 @@
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::to_string;
-use tracing::instrument;
+use std::sync::Arc;
 
-use runtime_settings;
-
-use crate::settings::get_context;
+use runtime_settings::RuntimeSettings;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,14 +17,18 @@ pub struct Request {
     key: Option<String>,
 }
 
-#[instrument]
-pub async fn get_key_from_rs(Query(params): Query<Request>) -> Json<Result> {
+pub async fn get_key_from_rs(
+    State(settings): State<Arc<RuntimeSettings>>,
+    Query(params): Query<Request>,
+) -> Json<Result> {
     let key = params.key.unwrap_or_else(|| "SOME_KEY".to_string());
-    let value: Option<String> = runtime_settings::settings.get(&key, &get_context());
-    let ser_value = to_string(&value).unwrap();
-    let result = Result {
+
+    // Context is automatically available from middleware via task-local storage
+    let value: Option<String> = settings.get(&key);
+    let ser_value = serde_json::to_string(&value).unwrap();
+
+    Json(Result {
         key,
         value: ser_value,
-    };
-    Json(result)
+    })
 }

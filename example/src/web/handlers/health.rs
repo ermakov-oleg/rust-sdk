@@ -1,7 +1,6 @@
 use axum::extract::Query;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 
 use crate::consts::APPLICATION_NAME;
 
@@ -12,24 +11,17 @@ pub struct HealthRequest {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HealthResult<'a> {
+pub struct HealthResult {
     success: bool,
-    application_name: &'a str,
-    server: &'a str,
-    version: &'a str,
-    mcs_run_env: &'a str,
+    application_name: &'static str,
 }
 
-#[instrument]
-pub async fn health<'a>(Query(params): Query<HealthRequest>) -> Json<Option<HealthResult<'a>>> {
+pub async fn health(Query(params): Query<HealthRequest>) -> Json<Option<HealthResult>> {
     let result = match params.noresponse {
         Some(_) => None,
         _ => Some(HealthResult {
             application_name: APPLICATION_NAME,
             success: true,
-            server: "",
-            version: "",
-            mcs_run_env: "",
         }),
     };
     Json(result)

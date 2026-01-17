@@ -1,23 +1,23 @@
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
+use std::sync::Arc;
 
 use struct_log::setup_logger;
 
 use crate::consts::{APPLICATION_NAME, VERSION};
 
 mod consts;
-mod settings;
+mod middleware;
 mod web;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "classify")]
+#[derive(Debug, Parser)]
+#[command(name = "example")]
 pub struct ApplicationArguments {
-    #[structopt(subcommand)]
+    #[command(subcommand)]
     pub command: Command,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 pub enum Command {
-    #[structopt(name = "serve")]
     Serve(web::Serve),
 }
 
@@ -25,16 +25,34 @@ pub enum Command {
 async fn main() -> Result<(), ()> {
     let _guard = setup_logger(APPLICATION_NAME.to_string(), VERSION.to_string());
 
-    runtime_settings::setup().await;
+    // Initialize runtime settings with new API
+    let settings = Arc::new(
+        runtime_settings::RuntimeSettings::builder()
+            .application(APPLICATION_NAME)
+            .mcs_enabled(false) // Disable MCS for local testing
+            .file_path("settings.json")
+            .build(),
+    );
+
+    settings.init().await.expect("Failed to init settings");
+
+    // Test getting a setting at startup (need to set context for this)
+    let ctx = runtime_settings::Context {
+        application: APPLICATION_NAME.to_string(),
+        ..Default::default()
+    };
+    let _guard = settings.set_context(ctx);
+
     let key = "SOME_KEY";
-    let val: Option<String> = runtime_settings::settings.get(key, &settings::get_context());
+    let val: Option<String> = settings.get(key);
     tracing::warn!(key = key, value = ?val, "runtime-settings result");
 
-    let opt = ApplicationArguments::from_args();
+    let opt = ApplicationArguments::parse();
     match opt.command {
         Command::Serve(params) => {
-            web::start_server(params).await;
+            web::start_server(params, settings).await;
         }
     };
+
     Ok(())
 }

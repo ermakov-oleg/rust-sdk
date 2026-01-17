@@ -1,19 +1,33 @@
-use crate::entities::{Setting, SettingKey};
+// lib/runtime-settings/src/providers/mod.rs
+pub mod env;
+pub mod file;
+pub mod mcs;
+
+use crate::entities::{RawSetting, SettingKey};
+use crate::error::SettingsError;
 use async_trait::async_trait;
-pub use file::FileProvider;
-pub use microservice::MicroserviceRuntimeSettingsProvider;
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-mod file;
-mod microservice;
-
-pub trait RuntimeSettingsState: Send + Sync {
-    fn get_version(&self) -> String;
-    fn set_version(&self, version: String);
-    fn update_settings(&self, new_settings: Vec<Setting>, to_delete: Vec<SettingKey>);
+/// Response from a settings provider
+#[derive(Debug, Clone, Default)]
+pub struct ProviderResponse {
+    pub settings: Vec<RawSetting>,
+    pub deleted: Vec<SettingKey>,
+    pub version: String,
 }
 
+/// Trait for settings providers
 #[async_trait]
 pub trait SettingsProvider: Send + Sync {
-    async fn update_settings(&self, state: &dyn RuntimeSettingsState);
+    /// Load settings. Returns settings, deleted keys, and new version.
+    async fn load(&self, current_version: &str) -> Result<ProviderResponse, SettingsError>;
+
+    /// Default priority for settings from this provider
+    fn default_priority(&self) -> i64;
+
+    /// Provider name for logging
+    fn name(&self) -> &'static str;
 }
+
+pub use env::EnvProvider;
+pub use file::FileProvider;
+pub use mcs::McsProvider;

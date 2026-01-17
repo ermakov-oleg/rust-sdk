@@ -1,27 +1,47 @@
-#![allow(non_upper_case_globals)]
-use std::error::Error;
+// lib/runtime-settings/src/setup.rs
+//! Global setup functions for RuntimeSettings.
 
-use lazy_static::lazy_static;
-use tokio::task;
-use tokio::time::{sleep, Duration};
+use crate::error::SettingsError;
+use crate::settings::{RuntimeSettings, RuntimeSettingsBuilder};
+use std::sync::OnceLock;
+use std::time::Duration;
+use tokio::time::sleep;
 
-use crate::rs::RuntimeSettings;
+static SETTINGS: OnceLock<RuntimeSettings> = OnceLock::new();
 
-lazy_static! {
-    pub static ref settings: RuntimeSettings = RuntimeSettings::new();
+/// Get the global settings instance
+pub fn settings() -> &'static RuntimeSettings {
+    SETTINGS
+        .get()
+        .expect("RuntimeSettings not initialized - call setup() first")
 }
 
-pub async fn setup() {
-    settings.init().await;
-    settings.refresh().await.unwrap();
+/// Initialize global settings with builder
+pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError> {
+    let runtime_settings = builder.build();
+    runtime_settings.init().await?;
 
-    task::spawn(async move {
+    SETTINGS
+        .set(runtime_settings)
+        .map_err(|_| SettingsError::Vault("Settings already initialized".to_string()))?;
+
+    // Start background refresh
+    tokio::spawn(async {
         loop {
-            sleep(Duration::from_secs(10)).await;
-            let _ = settings.refresh().await.or_else::<Box<dyn Error>, _>(|e| {
-                tracing::error!("Error when update RS {}", e);
-                Ok(())
-            });
+            sleep(Duration::from_secs(30)).await;
+            if let Err(e) = settings().refresh().await {
+                tracing::error!("Settings refresh failed: {}", e);
+            }
         }
     });
+
+    Ok(())
+}
+
+/// Initialize with default builder (requires RUNTIME_SETTINGS_APPLICATION env var)
+pub async fn setup_from_env() -> Result<(), SettingsError> {
+    let application =
+        std::env::var("RUNTIME_SETTINGS_APPLICATION").unwrap_or_else(|_| "unknown".to_string());
+
+    setup(RuntimeSettings::builder().application(application)).await
 }
