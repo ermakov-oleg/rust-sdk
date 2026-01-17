@@ -2,7 +2,9 @@
 pub mod context;
 pub mod entities;
 pub mod error;
+pub mod filters;
 
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, Setting, SettingKey};
 pub use error::SettingsError;
+pub use filters::FilterResult;
