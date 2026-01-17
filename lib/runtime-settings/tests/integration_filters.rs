@@ -4,7 +4,7 @@
 //! settings (Setting) to context matching. It verifies that filters are correctly
 //! compiled and that matching logic works as expected across the full pipeline.
 
-use runtime_settings::context::{Context, Request, StaticContext};
+use runtime_settings::context::{CustomContext, DynamicContext, Request, StaticContext};
 use runtime_settings::entities::{RawSetting, Setting};
 use std::collections::HashMap;
 
@@ -52,14 +52,14 @@ fn static_ctx(app: &str, server: &str, mcs_run_env: Option<&str>) -> StaticConte
     }
 }
 
-/// Create a Context with request information for testing purposes.
+/// Create a DynamicContext with request information for testing purposes.
 ///
 /// # Arguments
 /// * `path` - URL path for the request
 /// * `email` - Optional email (set via x-real-email header)
 /// * `ip` - Optional IP address (set via x-real-ip header)
 #[allow(dead_code)]
-fn request_ctx(path: &str, email: Option<&str>, ip: Option<&str>) -> Context {
+fn request_ctx(path: &str, email: Option<&str>, ip: Option<&str>) -> DynamicContext {
     let mut headers = HashMap::new();
     if let Some(e) = email {
         headers.insert("x-real-email".to_string(), e.to_string());
@@ -68,18 +68,13 @@ fn request_ctx(path: &str, email: Option<&str>, ip: Option<&str>) -> Context {
         headers.insert("x-real-ip".to_string(), i.to_string());
     }
 
-    Context {
-        application: String::new(),
-        server: String::new(),
-        environment: HashMap::new(),
-        libraries_versions: HashMap::new(),
-        mcs_run_env: None,
+    DynamicContext {
         request: Some(Request {
             method: "GET".to_string(),
             path: path.to_string(),
             headers,
         }),
-        custom: HashMap::new(),
+        custom: CustomContext::new(),
     }
 }
 

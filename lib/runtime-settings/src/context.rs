@@ -129,6 +129,19 @@ impl From<&Context> for StaticContext {
     }
 }
 
+impl From<&Context> for DynamicContext {
+    fn from(ctx: &Context) -> Self {
+        let mut custom = CustomContext::new();
+        if !ctx.custom.is_empty() {
+            custom.push_layer(ctx.custom.clone());
+        }
+        Self {
+            request: ctx.request.clone(),
+            custom,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

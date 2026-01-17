@@ -1,7 +1,7 @@
 // lib/runtime-settings/src/settings.rs
 //! RuntimeSettings - main struct for managing runtime configuration.
 
-use crate::context::{Context, Request, StaticContext};
+use crate::context::{Context, DynamicContext, Request, StaticContext};
 use crate::entities::Setting;
 use crate::error::SettingsError;
 use crate::filters::check_static_filters;
@@ -203,9 +203,10 @@ impl RuntimeSettings {
         let settings = state.settings.get(key)?;
 
         // Find the first matching setting (they're sorted by priority)
+        let dynamic_ctx: DynamicContext = ctx.into();
         for setting in settings {
             // Check dynamic filters using compiled filters
-            if setting.check_dynamic_filters(ctx) {
+            if setting.check_dynamic_filters(&dynamic_ctx) {
                 // Deserialize the value
                 match serde_json::from_value(setting.value.clone()) {
                     Ok(v) => return Some(v),
@@ -297,9 +298,10 @@ impl RuntimeSettings {
             }
         };
 
+        let dynamic_ctx: DynamicContext = (&ctx).into();
         for (key, settings) in &state.settings {
             for setting in settings {
-                if setting.check_dynamic_filters(&ctx) {
+                if setting.check_dynamic_filters(&dynamic_ctx) {
                     values.insert(key.clone(), setting.value.clone());
                     break;
                 }

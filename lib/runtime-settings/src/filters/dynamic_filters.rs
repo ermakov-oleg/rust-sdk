@@ -1,6 +1,6 @@
 // lib/runtime-settings/src/filters/dynamic_filters.rs
 use super::{CompiledDynamicFilter, DynamicFilter, FilterResult};
-use crate::context::Context;
+use crate::context::DynamicContext;
 use crate::error::SettingsError;
 use rand::Rng;
 use regex::{Regex, RegexBuilder};
@@ -31,7 +31,7 @@ impl DynamicFilter for UrlPathFilter {
         "url-path"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
         match &ctx.request {
             Some(req) => check_regex(pattern, &req.path),
             None => FilterResult::NotApplicable,
@@ -47,7 +47,7 @@ impl DynamicFilter for HostFilter {
         "host"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
         match &ctx.request {
             Some(req) => match req.host() {
                 Some(host) => check_regex(pattern, host),
@@ -66,7 +66,7 @@ impl DynamicFilter for EmailFilter {
         "email"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
         match &ctx.request {
             Some(req) => match req.email() {
                 Some(email) => check_regex(pattern, email),
@@ -85,7 +85,7 @@ impl DynamicFilter for IpFilter {
         "ip"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
         match &ctx.request {
             Some(req) => match req.ip() {
                 Some(ip) => check_regex(pattern, ip),
@@ -168,7 +168,7 @@ impl DynamicFilter for HeaderFilter {
         "header"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
         match &ctx.request {
             Some(req) => check_header_filter(pattern, &req.headers),
             None => FilterResult::NotApplicable,
@@ -184,8 +184,14 @@ impl DynamicFilter for ContextFilter {
         "context"
     }
 
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
-        check_map_filter(pattern, &ctx.custom)
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
+        // Convert CustomContext to HashMap for check_map_filter
+        let map: std::collections::HashMap<String, String> = ctx
+            .custom
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        check_map_filter(pattern, &map)
     }
 }
 
@@ -197,7 +203,7 @@ impl DynamicFilter for ProbabilityFilter {
         "probability"
     }
 
-    fn check(&self, pattern: &str, _ctx: &Context) -> FilterResult {
+    fn check(&self, pattern: &str, _ctx: &DynamicContext) -> FilterResult {
         let probability: f64 = match pattern.parse() {
             Ok(p) => p,
             Err(_) => return FilterResult::NoMatch,
@@ -252,7 +258,7 @@ impl CompiledUrlPathFilter {
 }
 
 impl CompiledDynamicFilter for CompiledUrlPathFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         match &ctx.request {
             Some(req) => self.regex.is_match(&req.path),
             None => true, // NotApplicable = pass
@@ -275,7 +281,7 @@ impl CompiledHostFilter {
 }
 
 impl CompiledDynamicFilter for CompiledHostFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         match &ctx.request {
             Some(req) => match req.host() {
                 Some(host) => self.regex.is_match(host),
@@ -301,7 +307,7 @@ impl CompiledEmailFilter {
 }
 
 impl CompiledDynamicFilter for CompiledEmailFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         match &ctx.request {
             Some(req) => match req.email() {
                 Some(email) => self.regex.is_match(email),
@@ -327,7 +333,7 @@ impl CompiledIpFilter {
 }
 
 impl CompiledDynamicFilter for CompiledIpFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         match &ctx.request {
             Some(req) => match req.ip() {
                 Some(ip) => self.regex.is_match(ip),
@@ -376,7 +382,7 @@ impl CompiledHeaderFilter {
 }
 
 impl CompiledDynamicFilter for CompiledHeaderFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         match &ctx.request {
             Some(req) => {
                 // Build lowercase map for case-insensitive matching
@@ -439,7 +445,7 @@ impl CompiledContextFilter {
 }
 
 impl CompiledDynamicFilter for CompiledContextFilter {
-    fn check(&self, ctx: &Context) -> bool {
+    fn check(&self, ctx: &DynamicContext) -> bool {
         for (key, regex) in &self.conditions {
             match ctx.custom.get(key) {
                 Some(actual_value) => {
@@ -472,7 +478,7 @@ impl CompiledProbabilityFilter {
 }
 
 impl CompiledDynamicFilter for CompiledProbabilityFilter {
-    fn check(&self, _ctx: &Context) -> bool {
+    fn check(&self, _ctx: &DynamicContext) -> bool {
         if self.probability <= 0.0 {
             return false;
         }
@@ -490,22 +496,17 @@ impl CompiledDynamicFilter for CompiledProbabilityFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::Request;
+    use crate::context::{CustomContext, Request};
     use std::collections::HashMap;
 
-    fn make_ctx_with_request(path: &str, headers: HashMap<String, String>) -> Context {
-        Context {
-            application: "app".to_string(),
-            server: "server".to_string(),
-            environment: HashMap::new(),
-            libraries_versions: HashMap::new(),
-            mcs_run_env: None,
+    fn make_ctx_with_request(path: &str, headers: HashMap<String, String>) -> DynamicContext {
+        DynamicContext {
             request: Some(Request {
                 method: "GET".to_string(),
                 path: path.to_string(),
                 headers,
             }),
-            custom: HashMap::new(),
+            custom: CustomContext::new(),
         }
     }
 
@@ -526,7 +527,7 @@ mod tests {
     #[test]
     fn test_url_path_filter_no_request() {
         let filter = UrlPathFilter;
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert_eq!(filter.check("/api/.*", &ctx), FilterResult::NotApplicable);
     }
 
@@ -581,9 +582,18 @@ mod tests {
     #[test]
     fn test_context_filter_match() {
         let filter = ContextFilter;
-        let mut ctx = Context::default();
-        ctx.custom.insert("user_id".to_string(), "123".to_string());
-        ctx.custom.insert("role".to_string(), "admin".to_string());
+        let mut custom = CustomContext::new();
+        custom.push_layer(
+            [
+                ("user_id".to_string(), "123".to_string()),
+                ("role".to_string(), "admin".to_string()),
+            ]
+            .into(),
+        );
+        let ctx = DynamicContext {
+            request: None,
+            custom,
+        };
         assert_eq!(
             filter.check("user_id=123,role=admin", &ctx),
             FilterResult::Match
@@ -593,16 +603,19 @@ mod tests {
     #[test]
     fn test_context_filter_regex_value() {
         let filter = ContextFilter;
-        let mut ctx = Context::default();
-        ctx.custom
-            .insert("user_id".to_string(), "12345".to_string());
+        let mut custom = CustomContext::new();
+        custom.push_layer([("user_id".to_string(), "12345".to_string())].into());
+        let ctx = DynamicContext {
+            request: None,
+            custom,
+        };
         assert_eq!(filter.check("user_id=123.*", &ctx), FilterResult::Match);
     }
 
     #[test]
     fn test_probability_filter_zero() {
         let filter = ProbabilityFilter;
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // 0% should always NoMatch
         assert_eq!(filter.check("0", &ctx), FilterResult::NoMatch);
     }
@@ -610,7 +623,7 @@ mod tests {
     #[test]
     fn test_probability_filter_hundred() {
         let filter = ProbabilityFilter;
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // 100% should always Match
         assert_eq!(filter.check("100", &ctx), FilterResult::Match);
     }
@@ -618,7 +631,7 @@ mod tests {
     #[test]
     fn test_probability_filter_invalid() {
         let filter = ProbabilityFilter;
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert_eq!(filter.check("abc", &ctx), FilterResult::NoMatch);
     }
 }
@@ -626,22 +639,17 @@ mod tests {
 #[cfg(test)]
 mod compiled_dynamic_tests {
     use super::*;
-    use crate::context::Request;
+    use crate::context::{CustomContext, Request};
     use std::collections::HashMap;
 
-    fn make_ctx_with_request(path: &str, headers: HashMap<String, String>) -> Context {
-        Context {
-            application: "app".to_string(),
-            server: "server".to_string(),
-            environment: HashMap::new(),
-            libraries_versions: HashMap::new(),
-            mcs_run_env: None,
+    fn make_ctx_with_request(path: &str, headers: HashMap<String, String>) -> DynamicContext {
+        DynamicContext {
             request: Some(Request {
                 method: "GET".to_string(),
                 path: path.to_string(),
                 headers,
             }),
-            custom: HashMap::new(),
+            custom: CustomContext::new(),
         }
     }
 
@@ -664,7 +672,7 @@ mod compiled_dynamic_tests {
     fn test_compiled_url_path_filter_no_request_returns_true() {
         // NotApplicable = pass (returns true)
         let filter = CompiledUrlPathFilter::compile("/api/.*").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -711,7 +719,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_host_filter_no_request_returns_true() {
         let filter = CompiledHostFilter::compile("api\\.example\\.com").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -744,7 +752,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_email_filter_no_request_returns_true() {
         let filter = CompiledEmailFilter::compile(".*@cian\\.ru").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -777,7 +785,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_ip_filter_no_request_returns_true() {
         let filter = CompiledIpFilter::compile("192\\.168\\..*").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -846,7 +854,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_header_filter_no_request_returns_true() {
         let filter = CompiledHeaderFilter::compile("X-Feature=enabled").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -883,33 +891,49 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_context_filter_match() {
         let filter = CompiledContextFilter::compile("user_id=123,role=admin").unwrap();
-        let mut ctx = Context::default();
-        ctx.custom.insert("user_id".to_string(), "123".to_string());
-        ctx.custom.insert("role".to_string(), "admin".to_string());
+        let mut custom = CustomContext::new();
+        custom.push_layer(
+            [
+                ("user_id".to_string(), "123".to_string()),
+                ("role".to_string(), "admin".to_string()),
+            ]
+            .into(),
+        );
+        let ctx = DynamicContext {
+            request: None,
+            custom,
+        };
         assert!(filter.check(&ctx));
     }
 
     #[test]
     fn test_compiled_context_filter_no_match() {
         let filter = CompiledContextFilter::compile("user_id=123").unwrap();
-        let mut ctx = Context::default();
-        ctx.custom.insert("user_id".to_string(), "456".to_string());
+        let mut custom = CustomContext::new();
+        custom.push_layer([("user_id".to_string(), "456".to_string())].into());
+        let ctx = DynamicContext {
+            request: None,
+            custom,
+        };
         assert!(!filter.check(&ctx));
     }
 
     #[test]
     fn test_compiled_context_filter_missing_key() {
         let filter = CompiledContextFilter::compile("user_id=123").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(!filter.check(&ctx));
     }
 
     #[test]
     fn test_compiled_context_filter_regex_value() {
         let filter = CompiledContextFilter::compile("user_id=123.*").unwrap();
-        let mut ctx = Context::default();
-        ctx.custom
-            .insert("user_id".to_string(), "12345".to_string());
+        let mut custom = CustomContext::new();
+        custom.push_layer([("user_id".to_string(), "12345".to_string())].into());
+        let ctx = DynamicContext {
+            request: None,
+            custom,
+        };
         assert!(filter.check(&ctx));
     }
 
@@ -929,7 +953,7 @@ mod compiled_dynamic_tests {
     fn test_compiled_context_filter_empty_pattern() {
         // Empty pattern should compile (no conditions means always true)
         let filter = CompiledContextFilter::compile("").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
@@ -937,7 +961,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_probability_filter_zero() {
         let filter = CompiledProbabilityFilter::compile("0").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // 0% should always return false
         assert!(!filter.check(&ctx));
     }
@@ -945,7 +969,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_probability_filter_hundred() {
         let filter = CompiledProbabilityFilter::compile("100").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // 100% should always return true
         assert!(filter.check(&ctx));
     }
@@ -959,7 +983,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_probability_filter_negative() {
         let filter = CompiledProbabilityFilter::compile("-10").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // Negative should always return false
         assert!(!filter.check(&ctx));
     }
@@ -967,7 +991,7 @@ mod compiled_dynamic_tests {
     #[test]
     fn test_compiled_probability_filter_over_hundred() {
         let filter = CompiledProbabilityFilter::compile("150").unwrap();
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // Over 100% should always return true
         assert!(filter.check(&ctx));
     }
@@ -977,7 +1001,7 @@ mod compiled_dynamic_tests {
         // Should compile with float value
         let filter = CompiledProbabilityFilter::compile("50.5").unwrap();
         // Just verify it compiles - randomness makes it hard to test
-        let ctx = Context::default();
+        let ctx = DynamicContext::default();
         // Run multiple times, one of them should pass (though randomness applies)
         let _ = filter.check(&ctx);
     }
