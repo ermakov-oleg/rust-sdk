@@ -36,55 +36,55 @@ impl Request {
     }
 }
 
-/// Hierarchical custom context with ChainMap-like semantics
+/// Hierarchical custom context with eager merge (each snapshot is a complete merged state)
 #[derive(Debug, Clone, Default)]
 pub struct CustomContext {
-    layers: Vec<HashMap<String, String>>,
+    snapshots: Vec<HashMap<String, String>>,
 }
 
 impl CustomContext {
     /// Create empty custom context
     pub fn new() -> Self {
-        Self { layers: vec![] }
+        Self { snapshots: vec![] }
     }
 
-    /// Add a new layer on top
-    pub fn push_layer(&mut self, layer: HashMap<String, String>) {
-        self.layers.push(layer);
+    /// Add a new layer on top (merges with current state, new values take priority)
+    pub fn push_layer(&mut self, mut layer: HashMap<String, String>) {
+        if let Some(current) = self.snapshots.last() {
+            // Add old values only if key doesn't exist in new layer
+            for (k, v) in current {
+                layer.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
+        self.snapshots.push(layer);
     }
 
     /// Remove the top layer
     pub fn pop_layer(&mut self) {
-        self.layers.pop();
+        self.snapshots.pop();
     }
 
-    /// Get value by key (searches from top layer to bottom)
+    /// Get value by key - O(1) lookup
     pub fn get(&self, key: &str) -> Option<&str> {
-        for layer in self.layers.iter().rev() {
-            if let Some(v) = layer.get(key) {
-                return Some(v.as_str());
-            }
-        }
-        None
+        self.snapshots.last()?.get(key).map(|s| s.as_str())
     }
 
-    /// Iterate over all unique key-value pairs (top layer wins)
+    /// Iterate over all key-value pairs
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        let mut seen = std::collections::HashSet::new();
-        let mut result = Vec::new();
-        for layer in self.layers.iter().rev() {
-            for (k, v) in layer {
-                if seen.insert(k.as_str()) {
-                    result.push((k.as_str(), v.as_str()));
-                }
-            }
-        }
-        result.into_iter()
+        self.snapshots
+            .last()
+            .into_iter()
+            .flat_map(|m| m.iter().map(|(k, v)| (k.as_str(), v.as_str())))
     }
 
     /// Check if context is empty
     pub fn is_empty(&self) -> bool {
-        self.layers.iter().all(|l| l.is_empty())
+        self.snapshots.last().is_none_or(|m| m.is_empty())
+    }
+
+    /// Get reference to current merged HashMap (for filters)
+    pub fn as_map(&self) -> Option<&HashMap<String, String>> {
+        self.snapshots.last()
     }
 }
 

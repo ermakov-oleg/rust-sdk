@@ -185,13 +185,10 @@ impl DynamicFilter for ContextFilter {
     }
 
     fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult {
-        // Convert CustomContext to HashMap for check_map_filter
-        let map: std::collections::HashMap<String, String> = ctx
-            .custom
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        check_map_filter(pattern, &map)
+        match ctx.custom.as_map() {
+            Some(map) => check_map_filter(pattern, map),
+            None => FilterResult::NoMatch,
+        }
     }
 }
 
