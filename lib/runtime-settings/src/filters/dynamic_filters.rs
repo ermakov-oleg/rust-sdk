@@ -1,6 +1,7 @@
 // lib/runtime-settings/src/filters/dynamic_filters.rs
 use super::{DynamicFilter, FilterResult};
 use crate::context::Context;
+use rand::Rng;
 use regex::RegexBuilder;
 
 /// Helper to check regex pattern against value (case-insensitive, anchored)
@@ -184,7 +185,37 @@ impl DynamicFilter for ContextFilter {
     }
 }
 
+/// probability: "25" — 25% chance of Match
 pub struct ProbabilityFilter;
+
+impl DynamicFilter for ProbabilityFilter {
+    fn name(&self) -> &'static str {
+        "probability"
+    }
+
+    fn check(&self, pattern: &str, _ctx: &Context) -> FilterResult {
+        let probability: f64 = match pattern.parse() {
+            Ok(p) => p,
+            Err(_) => return FilterResult::NoMatch,
+        };
+
+        if probability <= 0.0 {
+            return FilterResult::NoMatch;
+        }
+        if probability >= 100.0 {
+            return FilterResult::Match;
+        }
+
+        let mut rng = rand::thread_rng();
+        let roll: f64 = rng.gen_range(0.0..100.0);
+
+        if roll < probability {
+            FilterResult::Match
+        } else {
+            FilterResult::NoMatch
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -289,5 +320,28 @@ mod tests {
         let mut ctx = Context::default();
         ctx.custom.insert("user_id".to_string(), "12345".to_string());
         assert_eq!(filter.check("user_id=123.*", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_probability_filter_zero() {
+        let filter = ProbabilityFilter;
+        let ctx = Context::default();
+        // 0% should always NoMatch
+        assert_eq!(filter.check("0", &ctx), FilterResult::NoMatch);
+    }
+
+    #[test]
+    fn test_probability_filter_hundred() {
+        let filter = ProbabilityFilter;
+        let ctx = Context::default();
+        // 100% should always Match
+        assert_eq!(filter.check("100", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_probability_filter_invalid() {
+        let filter = ProbabilityFilter;
+        let ctx = Context::default();
+        assert_eq!(filter.check("abc", &ctx), FilterResult::NoMatch);
     }
 }
