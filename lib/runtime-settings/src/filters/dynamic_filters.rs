@@ -97,8 +97,93 @@ impl DynamicFilter for IpFilter {
     }
 }
 
+/// Helper to parse "KEY1=value1,KEY2=value2" and check against a map
+fn check_map_filter(pattern: &str, map: &std::collections::HashMap<String, String>) -> FilterResult {
+    for pair in pattern.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = pair.splitn(2, '=').collect();
+        if parts.len() != 2 {
+            return FilterResult::NoMatch;
+        }
+        let key = parts[0].trim();
+        let value_pattern = parts[1].trim();
+
+        match map.get(key) {
+            Some(actual_value) => {
+                if check_regex(value_pattern, actual_value) != FilterResult::Match {
+                    return FilterResult::NoMatch;
+                }
+            }
+            None => return FilterResult::NoMatch,
+        }
+    }
+    FilterResult::Match
+}
+
+/// Helper for case-insensitive header lookup
+fn check_header_filter(pattern: &str, headers: &std::collections::HashMap<String, String>) -> FilterResult {
+    // Build lowercase map for case-insensitive matching
+    let headers_lower: std::collections::HashMap<String, String> = headers
+        .iter()
+        .map(|(k, v)| (k.to_lowercase(), v.clone()))
+        .collect();
+
+    for pair in pattern.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = pair.splitn(2, '=').collect();
+        if parts.len() != 2 {
+            return FilterResult::NoMatch;
+        }
+        let key = parts[0].trim().to_lowercase();
+        let value_pattern = parts[1].trim();
+
+        match headers_lower.get(&key) {
+            Some(actual_value) => {
+                if check_regex(value_pattern, actual_value) != FilterResult::Match {
+                    return FilterResult::NoMatch;
+                }
+            }
+            None => return FilterResult::NoMatch,
+        }
+    }
+    FilterResult::Match
+}
+
+/// header: "KEY1=val1,KEY2=val2" against ctx.request.headers
 pub struct HeaderFilter;
+
+impl DynamicFilter for HeaderFilter {
+    fn name(&self) -> &'static str {
+        "header"
+    }
+
+    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+        match &ctx.request {
+            Some(req) => check_header_filter(pattern, &req.headers),
+            None => FilterResult::NotApplicable,
+        }
+    }
+}
+
+/// context: "KEY1=val1,KEY2=val2" against ctx.custom
 pub struct ContextFilter;
+
+impl DynamicFilter for ContextFilter {
+    fn name(&self) -> &'static str {
+        "context"
+    }
+
+    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult {
+        check_map_filter(pattern, &ctx.custom)
+    }
+}
+
 pub struct ProbabilityFilter;
 
 #[cfg(test)]
@@ -169,5 +254,40 @@ mod tests {
         headers.insert("x-real-ip".to_string(), "192.168.1.100".to_string());
         let ctx = make_ctx_with_request("/", headers);
         assert_eq!(filter.check("192\\.168\\..*", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_header_filter_match() {
+        let filter = HeaderFilter;
+        let mut headers = HashMap::new();
+        headers.insert("X-Feature".to_string(), "enabled".to_string());
+        let ctx = make_ctx_with_request("/", headers);
+        assert_eq!(filter.check("X-Feature=enabled", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_header_filter_case_insensitive() {
+        let filter = HeaderFilter;
+        let mut headers = HashMap::new();
+        headers.insert("x-feature".to_string(), "enabled".to_string());
+        let ctx = make_ctx_with_request("/", headers);
+        assert_eq!(filter.check("X-Feature=enabled", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_context_filter_match() {
+        let filter = ContextFilter;
+        let mut ctx = Context::default();
+        ctx.custom.insert("user_id".to_string(), "123".to_string());
+        ctx.custom.insert("role".to_string(), "admin".to_string());
+        assert_eq!(filter.check("user_id=123,role=admin", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_context_filter_regex_value() {
+        let filter = ContextFilter;
+        let mut ctx = Context::default();
+        ctx.custom.insert("user_id".to_string(), "12345".to_string());
+        assert_eq!(filter.check("user_id=123.*", &ctx), FilterResult::Match);
     }
 }
