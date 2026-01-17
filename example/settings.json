@@ -1,11 +1,27 @@
 [
   {
-    "runtime": "rust",
     "key": "SOME_KEY",
-    "priority": 0,
+    "priority": 100,
     "filter": {
-      "context": "foo=bar;baz=quix"
+      "application": "example-service"
     },
-    "value": "value"
+    "value": "hello from settings"
+  },
+  {
+    "key": "FEATURE_FLAG",
+    "priority": 100,
+    "value": true
+  },
+  {
+    "key": "DATABASE_CONFIG",
+    "priority": 100,
+    "filter": {
+      "application": "example-service"
+    },
+    "value": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "example_db"
+    }
   }
 ]
