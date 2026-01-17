@@ -1477,7 +1477,6 @@ dependencies = [
  "async-trait",
  "gethostname 0.4.3",
  "json5",
- "lazy_static",
  "rand 0.8.5",
  "regex",
  "reqwest 0.11.27",

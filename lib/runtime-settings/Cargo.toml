@@ -22,7 +22,6 @@ vaultrs = "0.7"
 # Utilities
 thiserror = "2"
 tracing = "0.1"
-lazy_static = "1.4"
 regex = "1"
 semver = "1"
 rand = "0.8"

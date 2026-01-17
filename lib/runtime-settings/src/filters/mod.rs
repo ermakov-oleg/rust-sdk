@@ -4,7 +4,6 @@ pub mod static_filters;
 
 use crate::context::{Context, StaticContext};
 use crate::error::SettingsError;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 /// Result of filter check
@@ -40,65 +39,27 @@ pub trait CompiledDynamicFilter: Send + Sync {
 pub use dynamic_filters::*;
 pub use static_filters::*;
 
-lazy_static! {
-    static ref STATIC_FILTERS: Vec<Box<dyn StaticFilter>> = vec![
-        Box::new(static_filters::ApplicationFilter),
-        Box::new(static_filters::ServerFilter),
-        Box::new(static_filters::EnvironmentFilter),
-        Box::new(static_filters::McsRunEnvFilter),
-        Box::new(static_filters::LibraryVersionFilter),
-    ];
-    static ref DYNAMIC_FILTERS: Vec<Box<dyn DynamicFilter>> = vec![
-        Box::new(dynamic_filters::UrlPathFilter),
-        Box::new(dynamic_filters::HostFilter),
-        Box::new(dynamic_filters::EmailFilter),
-        Box::new(dynamic_filters::IpFilter),
-        Box::new(dynamic_filters::HeaderFilter),
-        Box::new(dynamic_filters::ContextFilter),
-        Box::new(dynamic_filters::ProbabilityFilter),
-    ];
-    static ref STATIC_FILTER_NAMES: Vec<&'static str> =
-        STATIC_FILTERS.iter().map(|f| f.name()).collect();
-    static ref DYNAMIC_FILTER_NAMES: Vec<&'static str> =
-        DYNAMIC_FILTERS.iter().map(|f| f.name()).collect();
-}
-
-/// Check all static filters. Returns true if all match (or NotApplicable).
+/// Check all static filters against context. Returns true if all static filters match.
+/// Non-static filters (dynamic filters, unknown filters) are skipped.
 pub fn check_static_filters(filters: &HashMap<String, String>, ctx: &StaticContext) -> bool {
     for (name, pattern) in filters {
-        // Skip dynamic filters
-        if DYNAMIC_FILTER_NAMES.contains(&name.as_str()) {
+        // Only check known static filters, skip everything else
+        if !is_static_filter(name) {
             continue;
         }
 
-        // Find matching static filter
-        if let Some(filter) = STATIC_FILTERS.iter().find(|f| f.name() == name) {
-            match filter.check(pattern, ctx) {
-                FilterResult::Match | FilterResult::NotApplicable => continue,
-                FilterResult::NoMatch => return false,
+        // Compile and check the static filter
+        match compile_static_filter(name, pattern) {
+            Ok(compiled) => {
+                if !compiled.check(ctx) {
+                    return false;
+                }
+            }
+            Err(_) => {
+                // Invalid pattern - treat as no match
+                return false;
             }
         }
-        // Unknown filter - ignore
-    }
-    true
-}
-
-/// Check all dynamic filters. Returns true if all match (or NotApplicable).
-pub fn check_dynamic_filters(filters: &HashMap<String, String>, ctx: &Context) -> bool {
-    for (name, pattern) in filters {
-        // Skip static filters
-        if STATIC_FILTER_NAMES.contains(&name.as_str()) {
-            continue;
-        }
-
-        // Find matching dynamic filter
-        if let Some(filter) = DYNAMIC_FILTERS.iter().find(|f| f.name() == name) {
-            match filter.check(pattern, ctx) {
-                FilterResult::Match | FilterResult::NotApplicable => continue,
-                FilterResult::NoMatch => return false,
-            }
-        }
-        // Unknown filter - ignore
     }
     true
 }
@@ -198,22 +159,25 @@ mod tests {
     }
 
     #[test]
-    fn test_check_dynamic_filters_all_match() {
+    fn test_check_static_filters_skips_dynamic() {
+        // Dynamic filters should be skipped by check_static_filters
         let filters: HashMap<String, String> =
             [("url-path".to_string(), "/api/.*".to_string())].into();
 
-        let mut ctx = Context::default();
-        ctx.request = Some(crate::context::Request {
-            method: "GET".to_string(),
-            path: "/api/users".to_string(),
-            headers: HashMap::new(),
-        });
+        let ctx = StaticContext {
+            application: "app".to_string(),
+            server: "server".to_string(),
+            environment: HashMap::new(),
+            libraries_versions: HashMap::new(),
+            mcs_run_env: None,
+        };
 
-        assert!(check_dynamic_filters(&filters, &ctx));
+        // Dynamic filters are skipped, so this should pass
+        assert!(check_static_filters(&filters, &ctx));
     }
 
     #[test]
-    fn test_check_filters_ignores_unknown() {
+    fn test_check_static_filters_ignores_unknown() {
         let filters: HashMap<String, String> =
             [("unknown_filter".to_string(), "value".to_string())].into();
 

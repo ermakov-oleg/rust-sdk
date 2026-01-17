@@ -13,7 +13,7 @@ pub mod watchers;
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, RawSetting, Setting, SettingKey};
 pub use error::SettingsError;
-pub use filters::{check_dynamic_filters, check_static_filters, FilterResult};
+pub use filters::{check_static_filters, FilterResult};
 pub use providers::{ProviderResponse, SettingsProvider};
 pub use scoped::{
     current_context, current_request, set_thread_context, set_thread_request, with_task_context,
