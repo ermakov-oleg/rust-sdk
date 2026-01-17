@@ -88,6 +88,13 @@ impl CustomContext {
     }
 }
 
+/// Context for dynamic filter evaluation
+#[derive(Debug, Clone, Default)]
+pub struct DynamicContext {
+    pub request: Option<Request>,
+    pub custom: CustomContext,
+}
+
 /// Full context for filtering
 #[derive(Debug, Clone, Default)]
 pub struct Context {
@@ -208,5 +215,12 @@ mod tests {
         let items: HashMap<&str, &str> = ctx.iter().collect();
         assert_eq!(items.get("a"), Some(&"override"));
         assert_eq!(items.get("b"), Some(&"2"));
+    }
+
+    #[test]
+    fn test_dynamic_context_default() {
+        let ctx = DynamicContext::default();
+        assert!(ctx.request.is_none());
+        assert!(ctx.custom.is_empty());
     }
 }
