@@ -4,8 +4,9 @@
 //! This module provides scoped context management, allowing context to be
 //! automatically available to code within a scope without explicit passing.
 
-use crate::context::{Context, Request};
+use crate::context::{Context, CustomContext, Request};
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 tokio::task_local! {
     static TASK_CONTEXT: Option<Context>;
@@ -15,6 +16,10 @@ tokio::task_local! {
 thread_local! {
     static THREAD_CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
     static THREAD_REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
+}
+
+thread_local! {
+    static THREAD_CUSTOM: RefCell<CustomContext> = RefCell::new(CustomContext::new());
 }
 
 /// Get current context (task-local takes priority over thread-local)
@@ -33,6 +38,11 @@ pub fn current_request() -> Option<Request> {
         .ok()
         .flatten()
         .or_else(|| THREAD_REQUEST.with(|r| r.borrow().clone()))
+}
+
+/// Get current custom context (returns clone)
+pub fn current_custom() -> CustomContext {
+    THREAD_CUSTOM.with(|c| c.borrow().clone())
 }
 
 /// Guard that restores previous context on drop
@@ -63,6 +73,16 @@ impl Drop for RequestGuard {
     }
 }
 
+/// Guard that pops layer from custom context on drop
+#[must_use = "guard must be held for the custom context layer to remain active"]
+pub struct CustomContextGuard;
+
+impl Drop for CustomContextGuard {
+    fn drop(&mut self) {
+        THREAD_CUSTOM.with(|c| c.borrow_mut().pop_layer());
+    }
+}
+
 /// Set thread-local context, returns guard that restores previous on drop
 pub fn set_thread_context(ctx: Context) -> ContextGuard {
     let previous = THREAD_CONTEXT.with(|c| c.borrow_mut().replace(ctx));
@@ -73,6 +93,12 @@ pub fn set_thread_context(ctx: Context) -> ContextGuard {
 pub fn set_thread_request(req: Request) -> RequestGuard {
     let previous = THREAD_REQUEST.with(|r| r.borrow_mut().replace(req));
     RequestGuard { previous }
+}
+
+/// Add layer to thread-local custom context, returns guard that pops on drop
+pub fn set_thread_custom(layer: HashMap<String, String>) -> CustomContextGuard {
+    THREAD_CUSTOM.with(|c| c.borrow_mut().push_layer(layer));
+    CustomContextGuard
 }
 
 /// Execute async closure with task-local context
@@ -189,5 +215,33 @@ mod tests {
 
         assert_eq!(result, "task-app");
         assert_eq!(current_context().unwrap().application, "thread-app");
+    }
+
+    #[test]
+    fn test_thread_local_custom() {
+        let layer: HashMap<String, String> = [("key".to_string(), "value".to_string())].into();
+        {
+            let _guard = set_thread_custom(layer);
+            let current = current_custom();
+            assert_eq!(current.get("key"), Some("value"));
+        }
+        let current = current_custom();
+        assert!(current.is_empty());
+    }
+
+    #[test]
+    fn test_nested_custom_guards() {
+        let layer1: HashMap<String, String> = [("key".to_string(), "base".to_string())].into();
+        let layer2: HashMap<String, String> = [("key".to_string(), "override".to_string())].into();
+        {
+            let _guard1 = set_thread_custom(layer1);
+            assert_eq!(current_custom().get("key"), Some("base"));
+            {
+                let _guard2 = set_thread_custom(layer2);
+                assert_eq!(current_custom().get("key"), Some("override"));
+            }
+            assert_eq!(current_custom().get("key"), Some("base"));
+        }
+        assert!(current_custom().is_empty());
     }
 }
