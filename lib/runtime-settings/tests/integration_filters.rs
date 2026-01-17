@@ -107,4 +107,98 @@ mod tests {
         assert_eq!(req.email(), Some("user@example.com"));
         assert_eq!(req.ip(), Some("192.168.1.1"));
     }
+
+    #[test]
+    fn test_application_filter_exact_match() {
+        // Create setting with application filter
+        let raw = raw_setting(
+            "APP_SETTING",
+            100,
+            &[("application", "my-app")],
+            serde_json::json!("value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should match when application is "my-app"
+        let ctx_match = static_ctx("my-app", "server1", None);
+        assert!(
+            setting.check_static_filters(&ctx_match),
+            "Should match when application is 'my-app'"
+        );
+
+        // Should NOT match when application is different
+        let ctx_no_match = static_ctx("other-app", "server1", None);
+        assert!(
+            !setting.check_static_filters(&ctx_no_match),
+            "Should not match when application is 'other-app'"
+        );
+    }
+
+    #[test]
+    fn test_mcs_run_env_filter_returns_false_when_none() {
+        // This test verifies the Python compatibility fix:
+        // When mcs_run_env filter is set but context has None, it should return FALSE
+        // (not NotApplicable which would be treated as a match)
+        let raw = raw_setting(
+            "ENV_SETTING",
+            100,
+            &[("mcs_run_env", "PROD")],
+            serde_json::json!("value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should return FALSE when mcs_run_env is None (the fix)
+        let ctx_none = static_ctx("my-app", "server1", None);
+        assert!(
+            !setting.check_static_filters(&ctx_none),
+            "Should return FALSE when mcs_run_env is None"
+        );
+
+        // Should return TRUE when mcs_run_env matches "PROD"
+        let ctx_prod = static_ctx("my-app", "server1", Some("PROD"));
+        assert!(
+            setting.check_static_filters(&ctx_prod),
+            "Should return TRUE when mcs_run_env matches 'PROD'"
+        );
+
+        // Should return FALSE when mcs_run_env is "DEV" (doesn't match)
+        let ctx_dev = static_ctx("my-app", "server1", Some("DEV"));
+        assert!(
+            !setting.check_static_filters(&ctx_dev),
+            "Should return FALSE when mcs_run_env is 'DEV'"
+        );
+    }
+
+    #[test]
+    fn test_multiple_static_filters_all_must_match() {
+        // Create setting with multiple static filters
+        let raw = raw_setting(
+            "MULTI_FILTER_SETTING",
+            100,
+            &[("application", "my-app"), ("server", "server-1")],
+            serde_json::json!("value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should match when BOTH application and server match
+        let ctx_both_match = static_ctx("my-app", "server-1", None);
+        assert!(
+            setting.check_static_filters(&ctx_both_match),
+            "Should match when both application and server match"
+        );
+
+        // Should NOT match when only application matches
+        let ctx_app_only = static_ctx("my-app", "other-server", None);
+        assert!(
+            !setting.check_static_filters(&ctx_app_only),
+            "Should not match when only application matches"
+        );
+
+        // Should NOT match when only server matches
+        let ctx_server_only = static_ctx("other-app", "server-1", None);
+        assert!(
+            !setting.check_static_filters(&ctx_server_only),
+            "Should not match when only server matches"
+        );
+    }
 }
