@@ -126,7 +126,7 @@ mod tests {
         // Remove and verify
         service.remove(id);
         let watchers = service.watchers.read().unwrap();
-        assert!(watchers.get("MY_KEY").map_or(true, |v| v.is_empty()));
+        assert!(watchers.get("MY_KEY").is_none_or(|v| v.is_empty()));
     }
 
     #[tokio::test]
