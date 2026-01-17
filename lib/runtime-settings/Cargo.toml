@@ -30,3 +30,4 @@ gethostname = "0.4"
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tempfile = "3"
+wiremock = "0.6"
