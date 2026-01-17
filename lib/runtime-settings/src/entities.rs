@@ -5,8 +5,12 @@ use crate::filters::{
     compile_dynamic_filter, compile_static_filter, is_static_filter, CompiledDynamicFilter,
     CompiledStaticFilter,
 };
+use dashmap::DashMap;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Raw setting as deserialized from JSON
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +29,8 @@ pub struct Setting {
     pub value: serde_json::Value,
     pub static_filters: Vec<Box<dyn CompiledStaticFilter>>,
     pub dynamic_filters: Vec<Box<dyn CompiledDynamicFilter>>,
+    /// Cache of deserialized values by TypeId
+    value_cache: DashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Setting {
@@ -35,6 +41,7 @@ impl std::fmt::Debug for Setting {
             .field("value", &self.value)
             .field("static_filters_count", &self.static_filters.len())
             .field("dynamic_filters_count", &self.dynamic_filters.len())
+            .field("cached_types_count", &self.value_cache.len())
             .finish()
     }
 }
@@ -63,6 +70,7 @@ impl Setting {
             value: raw.value,
             static_filters,
             dynamic_filters,
+            value_cache: DashMap::new(),
         })
     }
 
@@ -74,6 +82,39 @@ impl Setting {
     /// Check all dynamic filters against the given context
     pub fn check_dynamic_filters(&self, ctx: &Context) -> bool {
         self.dynamic_filters.iter().all(|f| f.check(ctx))
+    }
+
+    /// Get the setting value with caching by TypeId.
+    ///
+    /// On first access, deserializes JSON and stores in cache.
+    /// Subsequent calls with the same type return the cached value.
+    ///
+    /// Note: there is a possible race condition on concurrent cache misses from multiple threads —
+    /// both will deserialize and one will overwrite the other. This is safe (values are identical),
+    /// just a bit of extra work on first accesses.
+    pub fn get_value<T>(&self) -> Option<Arc<T>>
+    where
+        T: DeserializeOwned + Send + Sync + 'static,
+    {
+        let type_id = TypeId::of::<T>();
+
+        // Check cache
+        if let Some(cached) = self.value_cache.get(&type_id) {
+            let arc_any: Arc<dyn Any + Send + Sync> = Arc::clone(cached.value());
+            return Arc::downcast::<T>(arc_any).ok();
+        }
+
+        // Cache miss — deserialize
+        let value: T = serde_json::from_value(self.value.clone()).ok()?;
+        let arc_value = Arc::new(value);
+
+        // Store in cache
+        self.value_cache.insert(
+            type_id,
+            Arc::clone(&arc_value) as Arc<dyn Any + Send + Sync>,
+        );
+
+        Some(arc_value)
     }
 }
 

@@ -16,7 +16,7 @@ use semver::Version;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 /// Internal state of RuntimeSettings
 struct SettingsState {
@@ -111,7 +111,10 @@ impl RuntimeSettings {
     }
 
     /// Get setting value, panics if context not set
-    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
+    pub fn get<T>(&self, key: &str) -> Option<Arc<T>>
+    where
+        T: DeserializeOwned + Send + Sync + 'static,
+    {
         let ctx = self
             .get_effective_context()
             .expect("Context not set - call set_context() or with_context() first");
@@ -119,16 +122,22 @@ impl RuntimeSettings {
     }
 
     /// Get setting value with default
-    pub fn get_or<T: DeserializeOwned + Clone>(&self, key: &str, default: T) -> T {
-        self.get::<T>(key).unwrap_or(default)
+    pub fn get_or<T>(&self, key: &str, default: T) -> Arc<T>
+    where
+        T: DeserializeOwned + Send + Sync + 'static,
+    {
+        self.get(key).unwrap_or_else(|| Arc::new(default))
     }
 
     /// Create a getter function for a setting
-    pub fn getter<T: DeserializeOwned + Clone + 'static>(
+    pub fn getter<T>(
         &self,
         key: &'static str,
         default: T,
-    ) -> impl Fn(&RuntimeSettings) -> T {
+    ) -> impl Fn(&RuntimeSettings) -> Arc<T>
+    where
+        T: DeserializeOwned + Send + Sync + Clone + 'static,
+    {
         move |settings| settings.get_or::<T>(key, default.clone())
     }
 
@@ -197,7 +206,10 @@ impl RuntimeSettings {
     }
 
     /// Internal get with explicit context
-    fn get_internal<T: DeserializeOwned>(&self, key: &str, ctx: &Context) -> Option<T> {
+    fn get_internal<T>(&self, key: &str, ctx: &Context) -> Option<Arc<T>>
+    where
+        T: DeserializeOwned + Send + Sync + 'static,
+    {
         let state = self.state.read().unwrap();
 
         let settings = state.settings.get(key)?;
@@ -206,18 +218,7 @@ impl RuntimeSettings {
         for setting in settings {
             // Check dynamic filters using compiled filters
             if setting.check_dynamic_filters(ctx) {
-                // Deserialize the value
-                match serde_json::from_value(setting.value.clone()) {
-                    Ok(v) => return Some(v),
-                    Err(e) => {
-                        tracing::warn!(
-                            key = key,
-                            error = %e,
-                            "Failed to deserialize setting value"
-                        );
-                        return None;
-                    }
-                }
+                return setting.get_value::<T>();
             }
         }
 
@@ -487,7 +488,7 @@ mod tests {
             .build();
 
         // This should panic because no context is set
-        let _: Option<String> = settings.get("SOME_KEY");
+        let _: Option<Arc<String>> = settings.get("SOME_KEY");
     }
 
     #[test]
@@ -506,7 +507,7 @@ mod tests {
         let _guard = settings.set_context(ctx);
 
         // Should not panic, but return None since no settings loaded
-        let result: Option<String> = settings.get("SOME_KEY");
+        let result: Option<Arc<String>> = settings.get("SOME_KEY");
         assert!(result.is_none());
     }
 
@@ -616,8 +617,8 @@ mod tests {
             ..Default::default()
         };
 
-        let result: Option<String> = settings.get_internal("MY_KEY", &ctx);
-        assert_eq!(result, Some("high_priority".to_string()));
+        let result: Option<Arc<String>> = settings.get_internal("MY_KEY", &ctx);
+        assert_eq!(result.as_deref(), Some(&"high_priority".to_string()));
     }
 
     #[tokio::test]
@@ -650,12 +651,12 @@ mod tests {
 
         let result = settings
             .with_context(ctx, async {
-                let value: Option<String> = settings.get("TEST_KEY");
+                let value: Option<Arc<String>> = settings.get("TEST_KEY");
                 value
             })
             .await;
 
-        assert_eq!(result, Some("async_value".to_string()));
+        assert_eq!(result.as_deref(), Some(&"async_value".to_string()));
     }
 
     #[test]
@@ -695,7 +696,7 @@ mod tests {
         let _guard = settings.set_context(ctx);
 
         // Should return default since key doesn't exist
-        let result: String = settings.get_or("NONEXISTENT_KEY", "default_value".to_string());
-        assert_eq!(result, "default_value");
+        let result: Arc<String> = settings.get_or("NONEXISTENT_KEY", "default_value".to_string());
+        assert_eq!(*result, "default_value");
     }
 }

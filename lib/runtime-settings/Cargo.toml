@@ -26,6 +26,7 @@ regex = "1"
 semver = "1"
 rand = "0.8"
 gethostname = "0.4"
+dashmap = "6"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -24,8 +24,8 @@ pub async fn get_key_from_rs(
     let key = params.key.unwrap_or_else(|| "SOME_KEY".to_string());
 
     // Context is automatically available from middleware via task-local storage
-    let value: Option<String> = settings.get(&key);
-    let ser_value = serde_json::to_string(&value).unwrap();
+    let value: Option<Arc<String>> = settings.get(&key);
+    let ser_value = serde_json::to_string(&value.as_deref()).unwrap();
 
     Json(Result {
         key,

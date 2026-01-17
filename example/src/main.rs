@@ -44,7 +44,7 @@ async fn main() -> Result<(), ()> {
     let _guard = settings.set_context(ctx);
 
     let key = "SOME_KEY";
-    let val: Option<String> = settings.get(key);
+    let val: Option<std::sync::Arc<String>> = settings.get(key);
     tracing::warn!(key = key, value = ?val, "runtime-settings result");
 
     let opt = ApplicationArguments::parse();
