@@ -36,6 +36,58 @@ impl Request {
     }
 }
 
+/// Hierarchical custom context with ChainMap-like semantics
+#[derive(Debug, Clone, Default)]
+pub struct CustomContext {
+    layers: Vec<HashMap<String, String>>,
+}
+
+impl CustomContext {
+    /// Create empty custom context
+    pub fn new() -> Self {
+        Self { layers: vec![] }
+    }
+
+    /// Add a new layer on top
+    pub fn push_layer(&mut self, layer: HashMap<String, String>) {
+        self.layers.push(layer);
+    }
+
+    /// Remove the top layer
+    pub fn pop_layer(&mut self) {
+        self.layers.pop();
+    }
+
+    /// Get value by key (searches from top layer to bottom)
+    pub fn get(&self, key: &str) -> Option<&str> {
+        for layer in self.layers.iter().rev() {
+            if let Some(v) = layer.get(key) {
+                return Some(v.as_str());
+            }
+        }
+        None
+    }
+
+    /// Iterate over all unique key-value pairs (top layer wins)
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        for layer in self.layers.iter().rev() {
+            for (k, v) in layer {
+                if seen.insert(k.as_str()) {
+                    result.push((k.as_str(), v.as_str()));
+                }
+            }
+        }
+        result.into_iter()
+    }
+
+    /// Check if context is empty
+    pub fn is_empty(&self) -> bool {
+        self.layers.iter().all(|l| l.is_empty())
+    }
+}
+
 /// Full context for filtering
 #[derive(Debug, Clone, Default)]
 pub struct Context {
@@ -128,5 +180,33 @@ mod tests {
         assert!(ctx.application.is_empty());
         assert!(ctx.server.is_empty());
         assert!(ctx.request.is_none());
+    }
+
+    #[test]
+    fn test_custom_context_single_layer() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("key1".to_string(), "value1".to_string())].into());
+        assert_eq!(ctx.get("key1"), Some("value1"));
+        assert_eq!(ctx.get("missing"), None);
+    }
+
+    #[test]
+    fn test_custom_context_layered_override() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("key1".to_string(), "base".to_string())].into());
+        ctx.push_layer([("key1".to_string(), "override".to_string())].into());
+        assert_eq!(ctx.get("key1"), Some("override"));
+        ctx.pop_layer();
+        assert_eq!(ctx.get("key1"), Some("base"));
+    }
+
+    #[test]
+    fn test_custom_context_iter() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("a".to_string(), "1".to_string())].into());
+        ctx.push_layer([("b".to_string(), "2".to_string()), ("a".to_string(), "override".to_string())].into());
+        let items: HashMap<&str, &str> = ctx.iter().collect();
+        assert_eq!(items.get("a"), Some(&"override"));
+        assert_eq!(items.get("b"), Some(&"2"));
     }
 }
