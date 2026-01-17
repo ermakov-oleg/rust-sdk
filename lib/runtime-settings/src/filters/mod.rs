@@ -2,7 +2,7 @@
 pub mod dynamic_filters;
 pub mod static_filters;
 
-use crate::context::{Context, StaticContext};
+use crate::context::{DynamicContext, StaticContext};
 use crate::error::SettingsError;
 use std::collections::HashMap;
 
@@ -23,7 +23,7 @@ pub trait StaticFilter: Send + Sync {
 /// Dynamic filter - checked on every get()
 pub trait DynamicFilter: Send + Sync {
     fn name(&self) -> &'static str;
-    fn check(&self, pattern: &str, ctx: &Context) -> FilterResult;
+    fn check(&self, pattern: &str, ctx: &DynamicContext) -> FilterResult;
 }
 
 /// Trait for pre-compiled static filters
@@ -33,7 +33,7 @@ pub trait CompiledStaticFilter: Send + Sync {
 
 /// Trait for pre-compiled dynamic filters
 pub trait CompiledDynamicFilter: Send + Sync {
-    fn check(&self, ctx: &Context) -> bool;
+    fn check(&self, ctx: &DynamicContext) -> bool;
 }
 
 pub use dynamic_filters::*;
@@ -69,8 +69,13 @@ pub fn check_static_filters(filters: &HashMap<String, String>, ctx: &StaticConte
 // =============================================================================
 
 /// Known static filter names
-const KNOWN_STATIC_FILTER_NAMES: &[&str] =
-    &["application", "server", "mcs_run_env", "environment", "library_version"];
+const KNOWN_STATIC_FILTER_NAMES: &[&str] = &[
+    "application",
+    "server",
+    "mcs_run_env",
+    "environment",
+    "library_version",
+];
 
 /// Check if a filter name is static
 pub fn is_static_filter(name: &str) -> bool {

@@ -10,14 +10,14 @@ pub mod settings;
 pub mod setup;
 pub mod watchers;
 
-pub use context::{Context, Request, StaticContext};
+pub use context::{CustomContext, DynamicContext, Request, StaticContext};
 pub use entities::{McsResponse, RawSetting, Setting, SettingKey};
 pub use error::SettingsError;
 pub use filters::{check_static_filters, FilterResult};
 pub use providers::{ProviderResponse, SettingsProvider};
 pub use scoped::{
-    current_context, current_request, set_thread_context, set_thread_request, with_task_context,
-    with_task_request, ContextGuard, RequestGuard,
+    current_custom, current_request, set_thread_custom, set_thread_request, with_task_custom,
+    with_task_request, CustomContextGuard, RequestGuard,
 };
 pub use secrets::{resolve_secrets, SecretsService};
 pub use settings::{RuntimeSettings, RuntimeSettingsBuilder};
