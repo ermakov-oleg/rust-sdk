@@ -43,7 +43,10 @@ mod tests {
         let setting: Setting = serde_json::from_str(json).unwrap();
         assert_eq!(setting.key, "MY_KEY");
         assert_eq!(setting.priority, 100);
-        assert_eq!(setting.filter.get("application"), Some(&"my-app".to_string()));
+        assert_eq!(
+            setting.filter.get("application"),
+            Some(&"my-app".to_string())
+        );
     }
 
     #[test]

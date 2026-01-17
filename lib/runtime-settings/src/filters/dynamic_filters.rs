@@ -7,10 +7,7 @@ use regex::RegexBuilder;
 /// Helper to check regex pattern against value (case-insensitive, anchored)
 fn check_regex(pattern: &str, value: &str) -> FilterResult {
     let anchored = format!("^(?:{})$", pattern);
-    match RegexBuilder::new(&anchored)
-        .case_insensitive(true)
-        .build()
-    {
+    match RegexBuilder::new(&anchored).case_insensitive(true).build() {
         Ok(re) => {
             if re.is_match(value) {
                 FilterResult::Match
@@ -99,7 +96,10 @@ impl DynamicFilter for IpFilter {
 }
 
 /// Helper to parse "KEY1=value1,KEY2=value2" and check against a map
-fn check_map_filter(pattern: &str, map: &std::collections::HashMap<String, String>) -> FilterResult {
+fn check_map_filter(
+    pattern: &str,
+    map: &std::collections::HashMap<String, String>,
+) -> FilterResult {
     for pair in pattern.split(',') {
         let pair = pair.trim();
         if pair.is_empty() {
@@ -125,7 +125,10 @@ fn check_map_filter(pattern: &str, map: &std::collections::HashMap<String, Strin
 }
 
 /// Helper for case-insensitive header lookup
-fn check_header_filter(pattern: &str, headers: &std::collections::HashMap<String, String>) -> FilterResult {
+fn check_header_filter(
+    pattern: &str,
+    headers: &std::collections::HashMap<String, String>,
+) -> FilterResult {
     // Build lowercase map for case-insensitive matching
     let headers_lower: std::collections::HashMap<String, String> = headers
         .iter()
@@ -266,7 +269,10 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("host".to_string(), "api.example.com".to_string());
         let ctx = make_ctx_with_request("/", headers);
-        assert_eq!(filter.check("api\\.example\\.com", &ctx), FilterResult::Match);
+        assert_eq!(
+            filter.check("api\\.example\\.com", &ctx),
+            FilterResult::Match
+        );
     }
 
     #[test]
@@ -311,14 +317,18 @@ mod tests {
         let mut ctx = Context::default();
         ctx.custom.insert("user_id".to_string(), "123".to_string());
         ctx.custom.insert("role".to_string(), "admin".to_string());
-        assert_eq!(filter.check("user_id=123,role=admin", &ctx), FilterResult::Match);
+        assert_eq!(
+            filter.check("user_id=123,role=admin", &ctx),
+            FilterResult::Match
+        );
     }
 
     #[test]
     fn test_context_filter_regex_value() {
         let filter = ContextFilter;
         let mut ctx = Context::default();
-        ctx.custom.insert("user_id".to_string(), "12345".to_string());
+        ctx.custom
+            .insert("user_id".to_string(), "12345".to_string());
         assert_eq!(filter.check("user_id=123.*", &ctx), FilterResult::Match);
     }
 

@@ -7,4 +7,4 @@ pub mod filters;
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, Setting, SettingKey};
 pub use error::SettingsError;
-pub use filters::FilterResult;
+pub use filters::{check_dynamic_filters, check_static_filters, FilterResult};

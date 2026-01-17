@@ -7,10 +7,7 @@ use semver::Version;
 /// Helper to check regex pattern against value (case-insensitive, anchored)
 fn check_regex(pattern: &str, value: &str) -> FilterResult {
     let anchored = format!("^(?:{})$", pattern);
-    match RegexBuilder::new(&anchored)
-        .case_insensitive(true)
-        .build()
-    {
+    match RegexBuilder::new(&anchored).case_insensitive(true).build() {
         Ok(re) => {
             if re.is_match(value) {
                 FilterResult::Match
@@ -259,7 +256,8 @@ mod tests {
     fn test_environment_filter_single_match() {
         let filter = EnvironmentFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.environment.insert("ENV".to_string(), "prod".to_string());
+        ctx.environment
+            .insert("ENV".to_string(), "prod".to_string());
         assert_eq!(filter.check("ENV=prod", &ctx), FilterResult::Match);
     }
 
@@ -267,25 +265,35 @@ mod tests {
     fn test_environment_filter_multiple_match() {
         let filter = EnvironmentFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.environment.insert("ENV".to_string(), "prod".to_string());
-        ctx.environment.insert("DEBUG".to_string(), "false".to_string());
-        assert_eq!(filter.check("ENV=prod,DEBUG=false", &ctx), FilterResult::Match);
+        ctx.environment
+            .insert("ENV".to_string(), "prod".to_string());
+        ctx.environment
+            .insert("DEBUG".to_string(), "false".to_string());
+        assert_eq!(
+            filter.check("ENV=prod,DEBUG=false", &ctx),
+            FilterResult::Match
+        );
     }
 
     #[test]
     fn test_environment_filter_partial_no_match() {
         let filter = EnvironmentFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.environment.insert("ENV".to_string(), "prod".to_string());
+        ctx.environment
+            .insert("ENV".to_string(), "prod".to_string());
         // DEBUG is missing
-        assert_eq!(filter.check("ENV=prod,DEBUG=false", &ctx), FilterResult::NoMatch);
+        assert_eq!(
+            filter.check("ENV=prod,DEBUG=false", &ctx),
+            FilterResult::NoMatch
+        );
     }
 
     #[test]
     fn test_environment_filter_regex_value() {
         let filter = EnvironmentFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.environment.insert("ENV".to_string(), "production".to_string());
+        ctx.environment
+            .insert("ENV".to_string(), "production".to_string());
         assert_eq!(filter.check("ENV=prod.*", &ctx), FilterResult::Match);
     }
 
@@ -293,7 +301,8 @@ mod tests {
     fn test_library_version_filter_exact_match() {
         let filter = LibraryVersionFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(1, 2, 3));
+        ctx.libraries_versions
+            .insert("my-lib".to_string(), semver::Version::new(1, 2, 3));
         assert_eq!(filter.check("my-lib=1.2.3", &ctx), FilterResult::Match);
     }
 
@@ -301,7 +310,8 @@ mod tests {
     fn test_library_version_filter_gte() {
         let filter = LibraryVersionFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(2, 0, 0));
+        ctx.libraries_versions
+            .insert("my-lib".to_string(), semver::Version::new(2, 0, 0));
         assert_eq!(filter.check("my-lib>=1.0.0", &ctx), FilterResult::Match);
     }
 
@@ -309,8 +319,12 @@ mod tests {
     fn test_library_version_filter_range() {
         let filter = LibraryVersionFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(1, 5, 0));
-        assert_eq!(filter.check("my-lib>=1.0.0,my-lib<2.0.0", &ctx), FilterResult::Match);
+        ctx.libraries_versions
+            .insert("my-lib".to_string(), semver::Version::new(1, 5, 0));
+        assert_eq!(
+            filter.check("my-lib>=1.0.0,my-lib<2.0.0", &ctx),
+            FilterResult::Match
+        );
     }
 
     #[test]
@@ -324,7 +338,8 @@ mod tests {
     fn test_library_version_filter_version_too_low() {
         let filter = LibraryVersionFilter;
         let mut ctx = make_static_ctx("app", "server");
-        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(0, 9, 0));
+        ctx.libraries_versions
+            .insert("my-lib".to_string(), semver::Version::new(0, 9, 0));
         assert_eq!(filter.check("my-lib>=1.0.0", &ctx), FilterResult::NoMatch);
     }
 }
