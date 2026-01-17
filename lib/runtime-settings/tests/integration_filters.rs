@@ -201,4 +201,158 @@ mod tests {
             "Should not match when only server matches"
         );
     }
+
+    // ==================== Dynamic Filter Tests ====================
+
+    #[test]
+    fn test_url_path_filter() {
+        // Create setting with url-path filter (regex pattern)
+        let raw = raw_setting(
+            "URL_PATH_SETTING",
+            100,
+            &[("url-path", "/api/.*")],
+            serde_json::json!("api_value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should match /api/users
+        let ctx_users = request_ctx("/api/users", None, None);
+        assert!(
+            setting.check_dynamic_filters(&ctx_users),
+            "Should match /api/users"
+        );
+
+        // Should match /api/orders/123
+        let ctx_orders = request_ctx("/api/orders/123", None, None);
+        assert!(
+            setting.check_dynamic_filters(&ctx_orders),
+            "Should match /api/orders/123"
+        );
+
+        // Should NOT match /web/page
+        let ctx_web = request_ctx("/web/page", None, None);
+        assert!(
+            !setting.check_dynamic_filters(&ctx_web),
+            "Should not match /web/page"
+        );
+    }
+
+    #[test]
+    fn test_email_filter() {
+        // Create setting with email filter (regex pattern, dot escaped)
+        let raw = raw_setting(
+            "EMAIL_SETTING",
+            100,
+            &[("email", ".*@example\\.com")],
+            serde_json::json!("email_value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should match user@example.com
+        let ctx_user = request_ctx("/", Some("user@example.com"), None);
+        assert!(
+            setting.check_dynamic_filters(&ctx_user),
+            "Should match user@example.com"
+        );
+
+        // Should match admin@example.com
+        let ctx_admin = request_ctx("/", Some("admin@example.com"), None);
+        assert!(
+            setting.check_dynamic_filters(&ctx_admin),
+            "Should match admin@example.com"
+        );
+
+        // Should NOT match user@other.com
+        let ctx_other = request_ctx("/", Some("user@other.com"), None);
+        assert!(
+            !setting.check_dynamic_filters(&ctx_other),
+            "Should not match user@other.com"
+        );
+
+        // When no email header is present, the filter is NotApplicable and passes (returns true)
+        // This is by design - the filter only applies when email header exists
+        let ctx_no_email = request_ctx("/", None, None);
+        assert!(
+            setting.check_dynamic_filters(&ctx_no_email),
+            "Should pass (NotApplicable) when no email header is present"
+        );
+    }
+
+    #[test]
+    fn test_ip_filter() {
+        // Create setting with ip filter (regex pattern, dots escaped)
+        let raw = raw_setting(
+            "IP_SETTING",
+            100,
+            &[("ip", "192\\.168\\..*")],
+            serde_json::json!("ip_value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Should match 192.168.1.1
+        let ctx_match1 = request_ctx("/", None, Some("192.168.1.1"));
+        assert!(
+            setting.check_dynamic_filters(&ctx_match1),
+            "Should match 192.168.1.1"
+        );
+
+        // Should match 192.168.100.50
+        let ctx_match2 = request_ctx("/", None, Some("192.168.100.50"));
+        assert!(
+            setting.check_dynamic_filters(&ctx_match2),
+            "Should match 192.168.100.50"
+        );
+
+        // Should NOT match 10.0.0.1
+        let ctx_no_match = request_ctx("/", None, Some("10.0.0.1"));
+        assert!(
+            !setting.check_dynamic_filters(&ctx_no_match),
+            "Should not match 10.0.0.1"
+        );
+    }
+
+    #[test]
+    fn test_mixed_static_and_dynamic_filters() {
+        // Create setting with both static (application) and dynamic (url-path) filters
+        let raw = raw_setting(
+            "MIXED_FILTER_SETTING",
+            100,
+            &[("application", "my-app"), ("url-path", "/api/.*")],
+            serde_json::json!("mixed_value"),
+        );
+        let setting = Setting::compile(raw).expect("should compile");
+
+        // Create contexts for testing
+        let static_ctx_match = static_ctx("my-app", "server1", None);
+        let static_ctx_no_match = static_ctx("other-app", "server1", None);
+        let dynamic_ctx_match = request_ctx("/api/users", None, None);
+        let dynamic_ctx_no_match = request_ctx("/web/page", None, None);
+
+        // Static filter should match when application is "my-app"
+        assert!(
+            setting.check_static_filters(&static_ctx_match),
+            "Static filter should match when application is 'my-app'"
+        );
+
+        // Static filter should NOT match when application is different
+        assert!(
+            !setting.check_static_filters(&static_ctx_no_match),
+            "Static filter should not match when application is 'other-app'"
+        );
+
+        // Dynamic filter should match when url-path matches /api/.*
+        assert!(
+            setting.check_dynamic_filters(&dynamic_ctx_match),
+            "Dynamic filter should match when path is /api/users"
+        );
+
+        // Dynamic filter should NOT match when url-path doesn't match
+        assert!(
+            !setting.check_dynamic_filters(&dynamic_ctx_no_match),
+            "Dynamic filter should not match when path is /web/page"
+        );
+
+        // Both filters work independently - for a setting to fully match,
+        // both static AND dynamic filters must pass
+    }
 }
