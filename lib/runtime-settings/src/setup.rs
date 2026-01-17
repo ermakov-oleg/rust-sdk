@@ -21,9 +21,9 @@ pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError>
     let runtime_settings = builder.build();
     runtime_settings.init().await?;
 
-    SETTINGS.set(runtime_settings).map_err(|_| {
-        SettingsError::Vault("Settings already initialized".to_string())
-    })?;
+    SETTINGS
+        .set(runtime_settings)
+        .map_err(|_| SettingsError::Vault("Settings already initialized".to_string()))?;
 
     // Start background refresh
     tokio::spawn(async {
@@ -40,8 +40,8 @@ pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError>
 
 /// Initialize with default builder (requires RUNTIME_SETTINGS_APPLICATION env var)
 pub async fn setup_from_env() -> Result<(), SettingsError> {
-    let application = std::env::var("RUNTIME_SETTINGS_APPLICATION")
-        .unwrap_or_else(|_| "unknown".to_string());
+    let application =
+        std::env::var("RUNTIME_SETTINGS_APPLICATION").unwrap_or_else(|_| "unknown".to_string());
 
     setup(RuntimeSettings::builder().application(application)).await
 }
