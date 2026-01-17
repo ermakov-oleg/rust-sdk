@@ -161,8 +161,10 @@ mod tests {
             ..Default::default()
         };
 
-        let result = with_task_context(ctx, async { current_context().unwrap().application.clone() })
-            .await;
+        let result = with_task_context(ctx, async {
+            current_context().unwrap().application.clone()
+        })
+        .await;
 
         assert_eq!(result, "async-app");
     }
@@ -180,8 +182,10 @@ mod tests {
 
         let _guard = set_thread_context(thread_ctx);
 
-        let result = with_task_context(task_ctx, async { current_context().unwrap().application.clone() })
-            .await;
+        let result = with_task_context(task_ctx, async {
+            current_context().unwrap().application.clone()
+        })
+        .await;
 
         assert_eq!(result, "task-app");
         assert_eq!(current_context().unwrap().application, "thread-app");

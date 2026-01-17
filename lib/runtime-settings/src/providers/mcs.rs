@@ -121,8 +121,11 @@ mod tests {
 
     #[test]
     fn test_mcs_provider_default_priority() {
-        let provider =
-            McsProvider::new("http://test.local".to_string(), "app".to_string(), Some("DEV".to_string()));
+        let provider = McsProvider::new(
+            "http://test.local".to_string(),
+            "app".to_string(),
+            Some("DEV".to_string()),
+        );
         assert_eq!(provider.default_priority(), 0);
     }
 }

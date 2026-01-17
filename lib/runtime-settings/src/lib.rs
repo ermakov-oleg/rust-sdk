@@ -5,6 +5,7 @@ pub mod error;
 pub mod filters;
 pub mod providers;
 pub mod scoped;
+pub mod secrets;
 
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, Setting, SettingKey};
@@ -15,3 +16,4 @@ pub use scoped::{
     current_context, current_request, set_thread_context, set_thread_request, with_task_context,
     with_task_request, ContextGuard, RequestGuard,
 };
+pub use secrets::{resolve_secrets, SecretsService};
