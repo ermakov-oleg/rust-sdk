@@ -17,7 +17,10 @@ fn check_regex(pattern: &str, value: &str) -> FilterResult {
                 FilterResult::NoMatch
             }
         }
-        Err(_) => FilterResult::NoMatch,
+        Err(e) => {
+            tracing::warn!(pattern = %pattern, error = %e, "Failed to compile regex pattern");
+            FilterResult::NoMatch
+        }
     }
 }
 
@@ -64,7 +67,9 @@ impl StaticFilter for McsRunEnvFilter {
 }
 
 // Placeholder structs for other filters (to be implemented later)
+#[allow(dead_code)]
 pub struct EnvironmentFilter;
+#[allow(dead_code)]
 pub struct LibraryVersionFilter;
 
 #[cfg(test)]
@@ -123,5 +128,29 @@ mod tests {
         let filter = McsRunEnvFilter;
         let ctx = make_static_ctx("app", "server");
         assert_eq!(filter.check("PROD", &ctx), FilterResult::NotApplicable);
+    }
+
+    #[test]
+    fn test_case_insensitive_matching() {
+        let filter = ApplicationFilter;
+        let ctx = make_static_ctx("prod", "server1");
+        // Pattern "PROD" should match value "prod" (case-insensitive)
+        assert_eq!(filter.check("PROD", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_invalid_regex_returns_no_match() {
+        let filter = ApplicationFilter;
+        let ctx = make_static_ctx("my-service", "server1");
+        // Invalid regex (unclosed group) should return NoMatch
+        assert_eq!(filter.check("(unclosed", &ctx), FilterResult::NoMatch);
+    }
+
+    #[test]
+    fn test_anchoring_prevents_partial_match() {
+        let filter = ApplicationFilter;
+        let ctx = make_static_ctx("my-service-prod", "server1");
+        // Pattern "service" should NOT match "my-service-prod" due to anchoring
+        assert_eq!(filter.check("service", &ctx), FilterResult::NoMatch);
     }
 }
