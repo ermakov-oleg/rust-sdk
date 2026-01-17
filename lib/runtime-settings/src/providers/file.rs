@@ -1,6 +1,6 @@
 // lib/runtime-settings/src/providers/file.rs
 use super::{ProviderResponse, SettingsProvider};
-use crate::entities::Setting;
+use crate::entities::RawSetting;
 use crate::error::SettingsError;
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -52,7 +52,7 @@ impl SettingsProvider for FileProvider {
 
         let settings = file_settings
             .into_iter()
-            .map(|fs| Setting {
+            .map(|fs| RawSetting {
                 key: fs.key,
                 priority: fs.priority.unwrap_or(FILE_DEFAULT_PRIORITY),
                 filter: fs.filter,

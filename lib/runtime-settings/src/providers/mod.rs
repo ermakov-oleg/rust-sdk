@@ -3,14 +3,14 @@ pub mod env;
 pub mod file;
 pub mod mcs;
 
-use crate::entities::{Setting, SettingKey};
+use crate::entities::{RawSetting, SettingKey};
 use crate::error::SettingsError;
 use async_trait::async_trait;
 
 /// Response from a settings provider
 #[derive(Debug, Clone, Default)]
 pub struct ProviderResponse {
-    pub settings: Vec<Setting>,
+    pub settings: Vec<RawSetting>,
     pub deleted: Vec<SettingKey>,
     pub version: String,
 }

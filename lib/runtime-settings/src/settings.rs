@@ -4,7 +4,7 @@
 use crate::context::{Context, Request, StaticContext};
 use crate::entities::Setting;
 use crate::error::SettingsError;
-use crate::filters::{check_dynamic_filters, check_static_filters};
+use crate::filters::{check_static_filters};
 use crate::providers::{
     EnvProvider, FileProvider, McsProvider, ProviderResponse, SettingsProvider,
 };
@@ -205,8 +205,8 @@ impl RuntimeSettings {
 
         // Find the first matching setting (they're sorted by priority)
         for setting in settings {
-            // Check dynamic filters
-            if check_dynamic_filters(&setting.filter, ctx) {
+            // Check dynamic filters using compiled filters
+            if setting.check_dynamic_filters(ctx) {
                 // Deserialize the value
                 match serde_json::from_value(setting.value.clone()) {
                     Ok(v) => return Some(v),
@@ -237,15 +237,24 @@ impl RuntimeSettings {
         }
 
         // Process new/updated settings
-        for setting in response.settings {
-            // Check static filters
-            if !check_static_filters(&setting.filter, &self.static_context) {
+        for raw_setting in response.settings {
+            // Check static filters before compiling
+            if !check_static_filters(&raw_setting.filter, &self.static_context) {
                 // Setting doesn't match static filters, remove if exists
-                if let Some(settings) = state.settings.get_mut(&setting.key) {
-                    settings.retain(|s| s.priority != setting.priority);
+                if let Some(settings) = state.settings.get_mut(&raw_setting.key) {
+                    settings.retain(|s| s.priority != raw_setting.priority);
                 }
                 continue;
             }
+
+            // Compile the raw setting
+            let setting = match Setting::compile(raw_setting) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to compile setting filters, skipping");
+                    continue;
+                }
+            };
 
             // Add or update setting
             let settings = state.settings.entry(setting.key.clone()).or_default();
@@ -291,7 +300,7 @@ impl RuntimeSettings {
 
         for (key, settings) in &state.settings {
             for setting in settings {
-                if check_dynamic_filters(&setting.filter, &ctx) {
+                if setting.check_dynamic_filters(&ctx) {
                     values.insert(key.clone(), setting.value.clone());
                     break;
                 }
@@ -437,6 +446,7 @@ impl Default for RuntimeSettingsBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::RawSetting;
     use std::sync::Arc;
 
     #[test]
@@ -510,7 +520,7 @@ mod tests {
             .build();
 
         let response = ProviderResponse {
-            settings: vec![Setting {
+            settings: vec![RawSetting {
                 key: "MY_KEY".to_string(),
                 priority: 100,
                 filter: HashMap::new(),
@@ -542,7 +552,7 @@ mod tests {
 
         // Add low priority setting
         let response1 = ProviderResponse {
-            settings: vec![Setting {
+            settings: vec![RawSetting {
                 key: "MY_KEY".to_string(),
                 priority: 10,
                 filter: HashMap::new(),
@@ -555,7 +565,7 @@ mod tests {
 
         // Add high priority setting
         let response2 = ProviderResponse {
-            settings: vec![Setting {
+            settings: vec![RawSetting {
                 key: "MY_KEY".to_string(),
                 priority: 100,
                 filter: HashMap::new(),
@@ -584,13 +594,13 @@ mod tests {
         // Add settings with different priorities
         let response = ProviderResponse {
             settings: vec![
-                Setting {
+                RawSetting {
                     key: "MY_KEY".to_string(),
                     priority: 100,
                     filter: HashMap::new(),
                     value: serde_json::json!("high_priority"),
                 },
-                Setting {
+                RawSetting {
                     key: "MY_KEY".to_string(),
                     priority: 10,
                     filter: HashMap::new(),
@@ -623,7 +633,7 @@ mod tests {
 
         // Add a setting
         let response = ProviderResponse {
-            settings: vec![Setting {
+            settings: vec![RawSetting {
                 key: "TEST_KEY".to_string(),
                 priority: 100,
                 filter: HashMap::new(),

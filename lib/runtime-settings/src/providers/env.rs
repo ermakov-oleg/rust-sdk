@@ -1,7 +1,7 @@
 // lib/runtime-settings/src/providers/env.rs
 
 use super::{ProviderResponse, SettingsProvider};
-use crate::entities::Setting;
+use crate::entities::RawSetting;
 use crate::error::SettingsError;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ impl EnvProvider {
 #[async_trait]
 impl SettingsProvider for EnvProvider {
     async fn load(&self, _current_version: &str) -> Result<ProviderResponse, SettingsError> {
-        let settings: Vec<Setting> = self
+        let settings: Vec<RawSetting> = self
             .environ
             .iter()
             .map(|(key, value)| {
@@ -37,7 +37,7 @@ impl SettingsProvider for EnvProvider {
                 let json_value = serde_json::from_str(value)
                     .unwrap_or_else(|_| serde_json::Value::String(value.clone()));
 
-                Setting {
+                RawSetting {
                     key: key.clone(),
                     priority: ENV_PRIORITY,
                     filter: HashMap::new(),
