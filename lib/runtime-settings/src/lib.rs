@@ -6,6 +6,7 @@ pub mod filters;
 pub mod providers;
 pub mod scoped;
 pub mod secrets;
+pub mod watchers;
 
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, Setting, SettingKey};
@@ -17,3 +18,4 @@ pub use scoped::{
     with_task_request, ContextGuard, RequestGuard,
 };
 pub use secrets::{resolve_secrets, SecretsService};
+pub use watchers::{Watcher, WatcherId, WatchersService};
