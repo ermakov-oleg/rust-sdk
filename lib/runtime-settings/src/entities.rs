@@ -1,5 +1,5 @@
 // lib/runtime-settings/src/entities.rs
-use crate::context::{Context, StaticContext};
+use crate::context::{DynamicContext, StaticContext};
 use crate::error::SettingsError;
 use crate::filters::{
     compile_dynamic_filter, compile_static_filter, is_static_filter, CompiledDynamicFilter,
@@ -72,7 +72,7 @@ impl Setting {
     }
 
     /// Check all dynamic filters against the given context
-    pub fn check_dynamic_filters(&self, ctx: &Context) -> bool {
+    pub fn check_dynamic_filters(&self, ctx: &DynamicContext) -> bool {
         self.dynamic_filters.iter().all(|f| f.check(ctx))
     }
 }
@@ -242,20 +242,24 @@ mod tests {
         };
         let setting = Setting::compile(raw).unwrap();
 
-        let mut ctx_match = Context::default();
-        ctx_match.request = Some(crate::context::Request {
-            method: "GET".to_string(),
-            path: "/api/users".to_string(),
-            headers: HashMap::new(),
-        });
+        let ctx_match = DynamicContext {
+            request: Some(crate::context::Request {
+                method: "GET".to_string(),
+                path: "/api/users".to_string(),
+                headers: HashMap::new(),
+            }),
+            custom: Default::default(),
+        };
         assert!(setting.check_dynamic_filters(&ctx_match));
 
-        let mut ctx_no_match = Context::default();
-        ctx_no_match.request = Some(crate::context::Request {
-            method: "GET".to_string(),
-            path: "/other/path".to_string(),
-            headers: HashMap::new(),
-        });
+        let ctx_no_match = DynamicContext {
+            request: Some(crate::context::Request {
+                method: "GET".to_string(),
+                path: "/other/path".to_string(),
+                headers: HashMap::new(),
+            }),
+            custom: Default::default(),
+        };
         assert!(!setting.check_dynamic_filters(&ctx_no_match));
     }
 }

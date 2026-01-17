@@ -36,16 +36,63 @@ impl Request {
     }
 }
 
-/// Full context for filtering
+/// Hierarchical custom context with eager merge (each snapshot is a complete merged state)
 #[derive(Debug, Clone, Default)]
-pub struct Context {
-    pub application: String,
-    pub server: String,
-    pub environment: HashMap<String, String>,
-    pub libraries_versions: HashMap<String, Version>,
-    pub mcs_run_env: Option<String>,
+pub struct CustomContext {
+    snapshots: Vec<HashMap<String, String>>,
+}
+
+impl CustomContext {
+    /// Create empty custom context
+    pub fn new() -> Self {
+        Self { snapshots: vec![] }
+    }
+
+    /// Add a new layer on top (merges with current state, new values take priority)
+    pub fn push_layer(&mut self, mut layer: HashMap<String, String>) {
+        if let Some(current) = self.snapshots.last() {
+            // Add old values only if key doesn't exist in new layer
+            for (k, v) in current {
+                layer.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
+        self.snapshots.push(layer);
+    }
+
+    /// Remove the top layer
+    pub fn pop_layer(&mut self) {
+        self.snapshots.pop();
+    }
+
+    /// Get value by key - O(1) lookup
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.snapshots.last()?.get(key).map(|s| s.as_str())
+    }
+
+    /// Iterate over all key-value pairs
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.snapshots
+            .last()
+            .into_iter()
+            .flat_map(|m| m.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+    }
+
+    /// Check if context is empty
+    pub fn is_empty(&self) -> bool {
+        self.snapshots.last().is_none_or(|m| m.is_empty())
+    }
+
+    /// Get reference to current merged HashMap (for filters)
+    pub fn as_map(&self) -> Option<&HashMap<String, String>> {
+        self.snapshots.last()
+    }
+}
+
+/// Context for dynamic filter evaluation
+#[derive(Debug, Clone, Default)]
+pub struct DynamicContext {
     pub request: Option<Request>,
-    pub custom: HashMap<String, String>,
+    pub custom: CustomContext,
 }
 
 /// Static context (doesn't change after init)
@@ -56,18 +103,6 @@ pub struct StaticContext {
     pub environment: HashMap<String, String>,
     pub libraries_versions: HashMap<String, Version>,
     pub mcs_run_env: Option<String>,
-}
-
-impl From<&Context> for StaticContext {
-    fn from(ctx: &Context) -> Self {
-        Self {
-            application: ctx.application.clone(),
-            server: ctx.server.clone(),
-            environment: ctx.environment.clone(),
-            libraries_versions: ctx.libraries_versions.clone(),
-            mcs_run_env: ctx.mcs_run_env.clone(),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -123,10 +158,43 @@ mod tests {
     }
 
     #[test]
-    fn test_context_default() {
-        let ctx = Context::default();
-        assert!(ctx.application.is_empty());
-        assert!(ctx.server.is_empty());
+    fn test_custom_context_single_layer() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("key1".to_string(), "value1".to_string())].into());
+        assert_eq!(ctx.get("key1"), Some("value1"));
+        assert_eq!(ctx.get("missing"), None);
+    }
+
+    #[test]
+    fn test_custom_context_layered_override() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("key1".to_string(), "base".to_string())].into());
+        ctx.push_layer([("key1".to_string(), "override".to_string())].into());
+        assert_eq!(ctx.get("key1"), Some("override"));
+        ctx.pop_layer();
+        assert_eq!(ctx.get("key1"), Some("base"));
+    }
+
+    #[test]
+    fn test_custom_context_iter() {
+        let mut ctx = CustomContext::new();
+        ctx.push_layer([("a".to_string(), "1".to_string())].into());
+        ctx.push_layer(
+            [
+                ("b".to_string(), "2".to_string()),
+                ("a".to_string(), "override".to_string()),
+            ]
+            .into(),
+        );
+        let items: HashMap<&str, &str> = ctx.iter().collect();
+        assert_eq!(items.get("a"), Some(&"override"));
+        assert_eq!(items.get("b"), Some(&"2"));
+    }
+
+    #[test]
+    fn test_dynamic_context_default() {
+        let ctx = DynamicContext::default();
         assert!(ctx.request.is_none());
+        assert!(ctx.custom.is_empty());
     }
 }
