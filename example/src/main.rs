@@ -38,7 +38,7 @@ async fn main() -> Result<(), ()> {
 
     // Test getting a setting at startup (no context needed for basic get)
     let key = "SOME_KEY";
-    let val: Option<std::sync::Arc<String>> = settings.get(key);
+    let val: Option<Arc<String>> = settings.get(key);
     tracing::warn!(key = key, value = ?val, "runtime-settings result");
 
     let opt = ApplicationArguments::parse();
