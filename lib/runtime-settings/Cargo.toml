@@ -25,7 +25,7 @@ tracing = "0.1"
 regex = "1"
 semver = "1"
 rand = "0.8"
-gethostname = "0.4"
+gethostname = "1"
 dashmap = "6"
 
 [dev-dependencies]
