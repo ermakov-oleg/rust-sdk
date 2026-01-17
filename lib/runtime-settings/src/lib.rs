@@ -7,6 +7,7 @@ pub mod providers;
 pub mod scoped;
 pub mod secrets;
 pub mod settings;
+pub mod setup;
 pub mod watchers;
 
 pub use context::{Context, Request, StaticContext};
@@ -20,4 +21,5 @@ pub use scoped::{
 };
 pub use secrets::{resolve_secrets, SecretsService};
 pub use settings::{RuntimeSettings, RuntimeSettingsBuilder};
+pub use setup::{settings, setup, setup_from_env};
 pub use watchers::{Watcher, WatcherId, WatchersService};
