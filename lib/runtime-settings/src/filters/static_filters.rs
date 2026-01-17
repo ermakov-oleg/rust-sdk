@@ -2,6 +2,7 @@
 use super::{FilterResult, StaticFilter};
 use crate::context::StaticContext;
 use regex::RegexBuilder;
+use semver::Version;
 
 /// Helper to check regex pattern against value (case-insensitive, anchored)
 fn check_regex(pattern: &str, value: &str) -> FilterResult {
@@ -108,9 +109,69 @@ impl StaticFilter for EnvironmentFilter {
     }
 }
 
-// Placeholder structs for other filters (to be implemented later)
-#[allow(dead_code)]
+/// library_version: "pkg>=1.0.0,pkg<2.0.0" against ctx.libraries_versions
 pub struct LibraryVersionFilter;
+
+impl StaticFilter for LibraryVersionFilter {
+    fn name(&self) -> &'static str {
+        "library_version"
+    }
+
+    fn check(&self, pattern: &str, ctx: &StaticContext) -> FilterResult {
+        // Parse pattern like "pkg>=1.0.0,pkg<2.0.0" or "pkg=1.2.3"
+        for spec in pattern.split(',') {
+            let spec = spec.trim();
+            if spec.is_empty() {
+                continue;
+            }
+
+            // Find the operator position
+            let (pkg_name, op, version_str) = if let Some(pos) = spec.find(">=") {
+                (&spec[..pos], ">=", &spec[pos + 2..])
+            } else if let Some(pos) = spec.find("<=") {
+                (&spec[..pos], "<=", &spec[pos + 2..])
+            } else if let Some(pos) = spec.find('>') {
+                (&spec[..pos], ">", &spec[pos + 1..])
+            } else if let Some(pos) = spec.find('<') {
+                (&spec[..pos], "<", &spec[pos + 1..])
+            } else if let Some(pos) = spec.find('=') {
+                (&spec[..pos], "=", &spec[pos + 1..])
+            } else {
+                return FilterResult::NoMatch;
+            };
+
+            let pkg_name = pkg_name.trim();
+            let version_str = version_str.trim();
+
+            // Get installed version
+            let installed = match ctx.libraries_versions.get(pkg_name) {
+                Some(v) => v,
+                None => return FilterResult::NoMatch,
+            };
+
+            // Parse required version
+            let required = match Version::parse(version_str) {
+                Ok(v) => v,
+                Err(_) => return FilterResult::NoMatch,
+            };
+
+            // Check condition
+            let matches = match op {
+                ">=" => installed >= &required,
+                "<=" => installed <= &required,
+                ">" => installed > &required,
+                "<" => installed < &required,
+                "=" => installed == &required,
+                _ => false,
+            };
+
+            if !matches {
+                return FilterResult::NoMatch;
+            }
+        }
+        FilterResult::Match
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -226,5 +287,44 @@ mod tests {
         let mut ctx = make_static_ctx("app", "server");
         ctx.environment.insert("ENV".to_string(), "production".to_string());
         assert_eq!(filter.check("ENV=prod.*", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_library_version_filter_exact_match() {
+        let filter = LibraryVersionFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(1, 2, 3));
+        assert_eq!(filter.check("my-lib=1.2.3", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_library_version_filter_gte() {
+        let filter = LibraryVersionFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(2, 0, 0));
+        assert_eq!(filter.check("my-lib>=1.0.0", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_library_version_filter_range() {
+        let filter = LibraryVersionFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(1, 5, 0));
+        assert_eq!(filter.check("my-lib>=1.0.0,my-lib<2.0.0", &ctx), FilterResult::Match);
+    }
+
+    #[test]
+    fn test_library_version_filter_not_installed() {
+        let filter = LibraryVersionFilter;
+        let ctx = make_static_ctx("app", "server");
+        assert_eq!(filter.check("my-lib>=1.0.0", &ctx), FilterResult::NoMatch);
+    }
+
+    #[test]
+    fn test_library_version_filter_version_too_low() {
+        let filter = LibraryVersionFilter;
+        let mut ctx = make_static_ctx("app", "server");
+        ctx.libraries_versions.insert("my-lib".to_string(), semver::Version::new(0, 9, 0));
+        assert_eq!(filter.check("my-lib>=1.0.0", &ctx), FilterResult::NoMatch);
     }
 }
