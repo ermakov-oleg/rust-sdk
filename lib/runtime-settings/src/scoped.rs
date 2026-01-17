@@ -11,6 +11,7 @@ use std::collections::HashMap;
 tokio::task_local! {
     static TASK_CONTEXT: Option<Context>;
     static TASK_REQUEST: Option<Request>;
+    static TASK_CUSTOM: CustomContext;
 }
 
 thread_local! {
@@ -40,9 +41,12 @@ pub fn current_request() -> Option<Request> {
         .or_else(|| THREAD_REQUEST.with(|r| r.borrow().clone()))
 }
 
-/// Get current custom context (returns clone)
+/// Get current custom context (task-local takes priority over thread-local)
 pub fn current_custom() -> CustomContext {
-    THREAD_CUSTOM.with(|c| c.borrow().clone())
+    TASK_CUSTOM
+        .try_with(|c| c.clone())
+        .ok()
+        .unwrap_or_else(|| THREAD_CUSTOM.with(|c| c.borrow().clone()))
 }
 
 /// Guard that restores previous context on drop
@@ -115,6 +119,16 @@ where
     F: std::future::Future<Output = T>,
 {
     TASK_REQUEST.scope(Some(req), f).await
+}
+
+/// Execute async closure with additional custom context layer
+pub async fn with_task_custom<F, T>(layer: HashMap<String, String>, f: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    let mut ctx = current_custom();
+    ctx.push_layer(layer);
+    TASK_CUSTOM.scope(ctx, f).await
 }
 
 #[cfg(test)]
@@ -243,5 +257,14 @@ mod tests {
             assert_eq!(current_custom().get("key"), Some("base"));
         }
         assert!(current_custom().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_task_local_custom() {
+        let layer: HashMap<String, String> = [("async_key".to_string(), "async_value".to_string())].into();
+        let result = with_task_custom(layer, async {
+            current_custom().get("async_key").map(|s| s.to_string())
+        }).await;
+        assert_eq!(result, Some("async_value".to_string()));
     }
 }
