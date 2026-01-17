@@ -3,6 +3,7 @@ pub mod dynamic_filters;
 pub mod static_filters;
 
 use crate::context::{Context, StaticContext};
+use crate::error::SettingsError;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
@@ -100,6 +101,57 @@ pub fn check_dynamic_filters(filters: &HashMap<String, String>, ctx: &Context) -
         // Unknown filter - ignore
     }
     true
+}
+
+// =============================================================================
+// Filter Compilation Factory Functions
+// =============================================================================
+
+/// Known static filter names
+const KNOWN_STATIC_FILTER_NAMES: &[&str] =
+    &["application", "server", "mcs_run_env", "environment", "library_version"];
+
+/// Check if a filter name is static
+pub fn is_static_filter(name: &str) -> bool {
+    KNOWN_STATIC_FILTER_NAMES.contains(&name)
+}
+
+/// Compile a static filter by name
+pub fn compile_static_filter(
+    name: &str,
+    pattern: &str,
+) -> Result<Box<dyn CompiledStaticFilter>, SettingsError> {
+    match name {
+        "application" => Ok(Box::new(CompiledApplicationFilter::compile(pattern)?)),
+        "server" => Ok(Box::new(CompiledServerFilter::compile(pattern)?)),
+        "mcs_run_env" => Ok(Box::new(CompiledMcsRunEnvFilter::compile(pattern)?)),
+        "environment" => Ok(Box::new(CompiledEnvironmentFilter::compile(pattern)?)),
+        "library_version" => Ok(Box::new(CompiledLibraryVersionFilter::compile(pattern)?)),
+        _ => Err(SettingsError::InvalidRegex {
+            pattern: pattern.to_string(),
+            error: format!("Unknown static filter: {}", name),
+        }),
+    }
+}
+
+/// Compile a dynamic filter by name
+pub fn compile_dynamic_filter(
+    name: &str,
+    pattern: &str,
+) -> Result<Box<dyn CompiledDynamicFilter>, SettingsError> {
+    match name {
+        "url-path" => Ok(Box::new(CompiledUrlPathFilter::compile(pattern)?)),
+        "host" => Ok(Box::new(CompiledHostFilter::compile(pattern)?)),
+        "email" => Ok(Box::new(CompiledEmailFilter::compile(pattern)?)),
+        "ip" => Ok(Box::new(CompiledIpFilter::compile(pattern)?)),
+        "header" => Ok(Box::new(CompiledHeaderFilter::compile(pattern)?)),
+        "context" => Ok(Box::new(CompiledContextFilter::compile(pattern)?)),
+        "probability" => Ok(Box::new(CompiledProbabilityFilter::compile(pattern)?)),
+        _ => Err(SettingsError::InvalidRegex {
+            pattern: pattern.to_string(),
+            error: format!("Unknown dynamic filter: {}", name),
+        }),
+    }
 }
 
 #[cfg(test)]
