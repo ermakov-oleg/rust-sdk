@@ -4,32 +4,21 @@
 //! This module provides scoped context management, allowing context to be
 //! automatically available to code within a scope without explicit passing.
 
-use crate::context::{Context, CustomContext, Request};
+use crate::context::{CustomContext, Request};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 tokio::task_local! {
-    static TASK_CONTEXT: Option<Context>;
     static TASK_REQUEST: Option<Request>;
     static TASK_CUSTOM: CustomContext;
 }
 
 thread_local! {
-    static THREAD_CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
     static THREAD_REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
 }
 
 thread_local! {
     static THREAD_CUSTOM: RefCell<CustomContext> = RefCell::new(CustomContext::new());
-}
-
-/// Get current context (task-local takes priority over thread-local)
-pub fn current_context() -> Option<Context> {
-    TASK_CONTEXT
-        .try_with(|c| c.clone())
-        .ok()
-        .flatten()
-        .or_else(|| THREAD_CONTEXT.with(|c| c.borrow().clone()))
 }
 
 /// Get current request (task-local takes priority over thread-local)
@@ -47,20 +36,6 @@ pub fn current_custom() -> CustomContext {
         .try_with(|c| c.clone())
         .ok()
         .unwrap_or_else(|| THREAD_CUSTOM.with(|c| c.borrow().clone()))
-}
-
-/// Guard that restores previous context on drop
-#[must_use = "guard must be held for the context to remain active"]
-pub struct ContextGuard {
-    previous: Option<Context>,
-}
-
-impl Drop for ContextGuard {
-    fn drop(&mut self) {
-        THREAD_CONTEXT.with(|c| {
-            *c.borrow_mut() = self.previous.take();
-        });
-    }
 }
 
 /// Guard that restores previous request on drop
@@ -87,12 +62,6 @@ impl Drop for CustomContextGuard {
     }
 }
 
-/// Set thread-local context, returns guard that restores previous on drop
-pub fn set_thread_context(ctx: Context) -> ContextGuard {
-    let previous = THREAD_CONTEXT.with(|c| c.borrow_mut().replace(ctx));
-    ContextGuard { previous }
-}
-
 /// Set thread-local request, returns guard that restores previous on drop
 pub fn set_thread_request(req: Request) -> RequestGuard {
     let previous = THREAD_REQUEST.with(|r| r.borrow_mut().replace(req));
@@ -103,14 +72,6 @@ pub fn set_thread_request(req: Request) -> RequestGuard {
 pub fn set_thread_custom(layer: HashMap<String, String>) -> CustomContextGuard {
     THREAD_CUSTOM.with(|c| c.borrow_mut().push_layer(layer));
     CustomContextGuard
-}
-
-/// Execute async closure with task-local context
-pub async fn with_task_context<F, T>(ctx: Context, f: F) -> T
-where
-    F: std::future::Future<Output = T>,
-{
-    TASK_CONTEXT.scope(Some(ctx), f).await
 }
 
 /// Execute async closure with task-local request
@@ -136,22 +97,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_thread_local_context() {
-        let ctx = Context {
-            application: "test-app".to_string(),
-            ..Default::default()
-        };
-
-        {
-            let _guard = set_thread_context(ctx.clone());
-            let current = current_context().unwrap();
-            assert_eq!(current.application, "test-app");
-        }
-
-        assert!(current_context().is_none());
-    }
-
-    #[test]
     fn test_thread_local_request() {
         let req = Request {
             method: "POST".to_string(),
@@ -166,69 +111,6 @@ mod tests {
         }
 
         assert!(current_request().is_none());
-    }
-
-    #[test]
-    fn test_nested_context_guards() {
-        let ctx1 = Context {
-            application: "app1".to_string(),
-            ..Default::default()
-        };
-        let ctx2 = Context {
-            application: "app2".to_string(),
-            ..Default::default()
-        };
-
-        {
-            let _guard1 = set_thread_context(ctx1);
-            assert_eq!(current_context().unwrap().application, "app1");
-
-            {
-                let _guard2 = set_thread_context(ctx2);
-                assert_eq!(current_context().unwrap().application, "app2");
-            }
-
-            assert_eq!(current_context().unwrap().application, "app1");
-        }
-
-        assert!(current_context().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_task_local_context() {
-        let ctx = Context {
-            application: "async-app".to_string(),
-            ..Default::default()
-        };
-
-        let result = with_task_context(ctx, async {
-            current_context().unwrap().application.clone()
-        })
-        .await;
-
-        assert_eq!(result, "async-app");
-    }
-
-    #[tokio::test]
-    async fn test_task_local_priority_over_thread_local() {
-        let thread_ctx = Context {
-            application: "thread-app".to_string(),
-            ..Default::default()
-        };
-        let task_ctx = Context {
-            application: "task-app".to_string(),
-            ..Default::default()
-        };
-
-        let _guard = set_thread_context(thread_ctx);
-
-        let result = with_task_context(task_ctx, async {
-            current_context().unwrap().application.clone()
-        })
-        .await;
-
-        assert_eq!(result, "task-app");
-        assert_eq!(current_context().unwrap().application, "thread-app");
     }
 
     #[test]

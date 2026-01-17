@@ -95,18 +95,6 @@ pub struct DynamicContext {
     pub custom: CustomContext,
 }
 
-/// Full context for filtering
-#[derive(Debug, Clone, Default)]
-pub struct Context {
-    pub application: String,
-    pub server: String,
-    pub environment: HashMap<String, String>,
-    pub libraries_versions: HashMap<String, Version>,
-    pub mcs_run_env: Option<String>,
-    pub request: Option<Request>,
-    pub custom: HashMap<String, String>,
-}
-
 /// Static context (doesn't change after init)
 #[derive(Debug, Clone)]
 pub struct StaticContext {
@@ -115,31 +103,6 @@ pub struct StaticContext {
     pub environment: HashMap<String, String>,
     pub libraries_versions: HashMap<String, Version>,
     pub mcs_run_env: Option<String>,
-}
-
-impl From<&Context> for StaticContext {
-    fn from(ctx: &Context) -> Self {
-        Self {
-            application: ctx.application.clone(),
-            server: ctx.server.clone(),
-            environment: ctx.environment.clone(),
-            libraries_versions: ctx.libraries_versions.clone(),
-            mcs_run_env: ctx.mcs_run_env.clone(),
-        }
-    }
-}
-
-impl From<&Context> for DynamicContext {
-    fn from(ctx: &Context) -> Self {
-        let mut custom = CustomContext::new();
-        if !ctx.custom.is_empty() {
-            custom.push_layer(ctx.custom.clone());
-        }
-        Self {
-            request: ctx.request.clone(),
-            custom,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -192,14 +155,6 @@ mod tests {
             headers,
         };
         assert_eq!(request.ip(), Some("10.0.0.1"));
-    }
-
-    #[test]
-    fn test_context_default() {
-        let ctx = Context::default();
-        assert!(ctx.application.is_empty());
-        assert!(ctx.server.is_empty());
-        assert!(ctx.request.is_none());
     }
 
     #[test]

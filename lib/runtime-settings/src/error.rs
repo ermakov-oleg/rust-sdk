@@ -35,7 +35,4 @@ pub enum SettingsError {
 
     #[error("Invalid version specifier: {spec}")]
     InvalidVersionSpec { spec: String },
-
-    #[error("Context not set - call set_context() or with_context() first")]
-    ContextNotSet,
 }

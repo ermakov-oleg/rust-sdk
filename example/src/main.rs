@@ -36,13 +36,7 @@ async fn main() -> Result<(), ()> {
 
     settings.init().await.expect("Failed to init settings");
 
-    // Test getting a setting at startup (need to set context for this)
-    let ctx = runtime_settings::Context {
-        application: APPLICATION_NAME.to_string(),
-        ..Default::default()
-    };
-    let _guard = settings.set_context(ctx);
-
+    // Test getting a setting at startup (no context needed for basic get)
     let key = "SOME_KEY";
     let val: Option<String> = settings.get(key);
     tracing::warn!(key = key, value = ?val, "runtime-settings result");
