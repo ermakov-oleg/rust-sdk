@@ -644,8 +644,7 @@ mod tests {
         };
         settings.merge_settings(response);
 
-        let custom: HashMap<String, String> =
-            [("key".to_string(), "value".to_string())].into();
+        let custom: HashMap<String, String> = [("key".to_string(), "value".to_string())].into();
 
         let result = settings
             .with_custom(custom, async {

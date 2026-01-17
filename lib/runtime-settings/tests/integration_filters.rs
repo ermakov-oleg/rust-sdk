@@ -85,7 +85,12 @@ mod tests {
     #[test]
     fn test_helpers_compile() {
         // Verify that helper functions work and Setting::compile is accessible
-        let raw = raw_setting("TEST_KEY", 100, &[("application", "test-app")], serde_json::json!("value"));
+        let raw = raw_setting(
+            "TEST_KEY",
+            100,
+            &[("application", "test-app")],
+            serde_json::json!("value"),
+        );
         let setting = Setting::compile(raw).expect("should compile");
         assert_eq!(setting.key, "TEST_KEY");
         assert_eq!(setting.priority, 100);

@@ -69,8 +69,13 @@ pub fn check_static_filters(filters: &HashMap<String, String>, ctx: &StaticConte
 // =============================================================================
 
 /// Known static filter names
-const KNOWN_STATIC_FILTER_NAMES: &[&str] =
-    &["application", "server", "mcs_run_env", "environment", "library_version"];
+const KNOWN_STATIC_FILTER_NAMES: &[&str] = &[
+    "application",
+    "server",
+    "mcs_run_env",
+    "environment",
+    "library_version",
+];
 
 /// Check if a filter name is static
 pub fn is_static_filter(name: &str) -> bool {

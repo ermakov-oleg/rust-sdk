@@ -179,7 +179,13 @@ mod tests {
     fn test_custom_context_iter() {
         let mut ctx = CustomContext::new();
         ctx.push_layer([("a".to_string(), "1".to_string())].into());
-        ctx.push_layer([("b".to_string(), "2".to_string()), ("a".to_string(), "override".to_string())].into());
+        ctx.push_layer(
+            [
+                ("b".to_string(), "2".to_string()),
+                ("a".to_string(), "override".to_string()),
+            ]
+            .into(),
+        );
         let items: HashMap<&str, &str> = ctx.iter().collect();
         assert_eq!(items.get("a"), Some(&"override"));
         assert_eq!(items.get("b"), Some(&"2"));

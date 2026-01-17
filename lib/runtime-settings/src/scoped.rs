@@ -143,10 +143,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_local_custom() {
-        let layer: HashMap<String, String> = [("async_key".to_string(), "async_value".to_string())].into();
+        let layer: HashMap<String, String> =
+            [("async_key".to_string(), "async_value".to_string())].into();
         let result = with_task_custom(layer, async {
             current_custom().get("async_key").map(|s| s.to_string())
-        }).await;
+        })
+        .await;
         assert_eq!(result, Some("async_value".to_string()));
     }
 }

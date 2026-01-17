@@ -359,11 +359,10 @@ impl CompiledLibraryVersionFilter {
             let pkg_name = pkg_name.trim().to_string();
             let version_str = version_str.trim();
 
-            let version = Version::parse(version_str).map_err(|_| {
-                SettingsError::InvalidVersionSpec {
+            let version =
+                Version::parse(version_str).map_err(|_| SettingsError::InvalidVersionSpec {
                     spec: spec.to_string(),
-                }
-            })?;
+                })?;
 
             constraints.push((pkg_name, op, version));
         }
