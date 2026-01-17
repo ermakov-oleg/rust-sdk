@@ -26,6 +26,16 @@ pub trait DynamicFilter: Send + Sync {
     fn check(&self, pattern: &str, ctx: &Context) -> FilterResult;
 }
 
+/// Trait for pre-compiled static filters
+pub trait CompiledStaticFilter: Send + Sync {
+    fn check(&self, ctx: &StaticContext) -> bool;
+}
+
+/// Trait for pre-compiled dynamic filters
+pub trait CompiledDynamicFilter: Send + Sync {
+    fn check(&self, ctx: &Context) -> bool;
+}
+
 pub use dynamic_filters::*;
 pub use static_filters::*;
 
