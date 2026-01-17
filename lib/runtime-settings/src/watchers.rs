@@ -41,10 +41,7 @@ impl WatchersService {
         let entry = WatcherEntry { id, callback };
 
         let mut watchers = self.watchers.write().unwrap();
-        watchers
-            .entry(key.to_string())
-            .or_default()
-            .push(entry);
+        watchers.entry(key.to_string()).or_default().push(entry);
 
         id
     }
