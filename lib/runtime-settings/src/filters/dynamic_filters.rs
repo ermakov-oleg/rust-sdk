@@ -213,8 +213,8 @@ impl DynamicFilter for ProbabilityFilter {
             return FilterResult::Match;
         }
 
-        let mut rng = rand::thread_rng();
-        let roll: f64 = rng.gen_range(0.0..100.0);
+        let mut rng = rand::rng();
+        let roll: f64 = rng.random_range(0.0..100.0);
 
         if roll < probability {
             FilterResult::Match
@@ -483,8 +483,8 @@ impl CompiledDynamicFilter for CompiledProbabilityFilter {
             return true;
         }
 
-        let mut rng = rand::thread_rng();
-        let roll: f64 = rng.gen_range(0.0..100.0);
+        let mut rng = rand::rng();
+        let roll: f64 = rng.random_range(0.0..100.0);
 
         roll < self.probability
     }
