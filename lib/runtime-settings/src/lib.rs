@@ -4,9 +4,14 @@ pub mod entities;
 pub mod error;
 pub mod filters;
 pub mod providers;
+pub mod scoped;
 
 pub use context::{Context, Request, StaticContext};
 pub use entities::{McsResponse, Setting, SettingKey};
 pub use error::SettingsError;
 pub use filters::{check_dynamic_filters, check_static_filters, FilterResult};
 pub use providers::{ProviderResponse, SettingsProvider};
+pub use scoped::{
+    current_context, current_request, set_thread_context, set_thread_request, with_task_context,
+    with_task_request, ContextGuard, RequestGuard,
+};
