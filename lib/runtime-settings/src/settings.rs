@@ -1,15 +1,17 @@
 // lib/runtime-settings/src/settings.rs
 //! RuntimeSettings - main struct for managing runtime configuration.
 
-use crate::context::{Context, DynamicContext, Request, StaticContext};
+use crate::context::{DynamicContext, Request, StaticContext};
 use crate::entities::Setting;
 use crate::error::SettingsError;
 use crate::filters::check_static_filters;
 use crate::providers::{
     EnvProvider, FileProvider, McsProvider, ProviderResponse, SettingsProvider,
 };
-use crate::scoped::{current_context, current_request, set_thread_context, set_thread_request};
-use crate::scoped::{with_task_context, with_task_request, ContextGuard, RequestGuard};
+use crate::scoped::{
+    current_custom, current_request, set_thread_custom, set_thread_request, with_task_custom,
+    with_task_request, CustomContextGuard, RequestGuard,
+};
 use crate::secrets::SecretsService;
 use crate::watchers::{Watcher, WatcherId, WatchersService};
 use semver::Version;
@@ -110,11 +112,9 @@ impl RuntimeSettings {
         Ok(())
     }
 
-    /// Get setting value, panics if context not set
+    /// Get setting value using current scoped context
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
-        let ctx = self
-            .get_effective_context()
-            .expect("Context not set - call set_context() or with_context() first");
+        let ctx = self.get_dynamic_context();
         self.get_internal(key, &ctx)
     }
 
@@ -142,22 +142,14 @@ impl RuntimeSettings {
         self.watchers.remove(id)
     }
 
-    /// Set thread-local context
-    pub fn set_context(&self, ctx: Context) -> ContextGuard {
-        set_thread_context(ctx)
-    }
-
     /// Set thread-local request
     pub fn set_request(&self, req: Request) -> RequestGuard {
         set_thread_request(req)
     }
 
-    /// Execute async closure with task-local context
-    pub async fn with_context<F, T>(&self, ctx: Context, f: F) -> T
-    where
-        F: std::future::Future<Output = T>,
-    {
-        with_task_context(ctx, f).await
+    /// Set thread-local custom context layer
+    pub fn set_custom(&self, values: HashMap<String, String>) -> CustomContextGuard {
+        set_thread_custom(values)
     }
 
     /// Execute async closure with task-local request
@@ -168,45 +160,32 @@ impl RuntimeSettings {
         with_task_request(req, f).await
     }
 
-    /// Get effective context by merging scoped context with static
-    fn get_effective_context(&self) -> Option<Context> {
-        // Try to get scoped context first
-        let scoped_ctx = current_context();
-        let scoped_req = current_request();
+    /// Execute async closure with additional custom context layer
+    pub async fn with_custom<F, T>(&self, values: HashMap<String, String>, f: F) -> T
+    where
+        F: std::future::Future<Output = T>,
+    {
+        with_task_custom(values, f).await
+    }
 
-        // If we have a scoped context, use it
-        if let Some(ctx) = scoped_ctx {
-            return Some(ctx);
+    /// Get dynamic context from scoped request and custom
+    fn get_dynamic_context(&self) -> DynamicContext {
+        DynamicContext {
+            request: current_request(),
+            custom: current_custom(),
         }
-
-        // If we have a scoped request but no context, create context from static + request
-        if let Some(req) = scoped_req {
-            return Some(Context {
-                application: self.static_context.application.clone(),
-                server: self.static_context.server.clone(),
-                environment: self.static_context.environment.clone(),
-                libraries_versions: self.static_context.libraries_versions.clone(),
-                mcs_run_env: self.static_context.mcs_run_env.clone(),
-                request: Some(req),
-                custom: HashMap::new(),
-            });
-        }
-
-        // No scoped context at all
-        None
     }
 
     /// Internal get with explicit context
-    fn get_internal<T: DeserializeOwned>(&self, key: &str, ctx: &Context) -> Option<T> {
+    fn get_internal<T: DeserializeOwned>(&self, key: &str, ctx: &DynamicContext) -> Option<T> {
         let state = self.state.read().unwrap();
 
         let settings = state.settings.get(key)?;
 
         // Find the first matching setting (they're sorted by priority)
-        let dynamic_ctx: DynamicContext = ctx.into();
         for setting in settings {
             // Check dynamic filters using compiled filters
-            if setting.check_dynamic_filters(&dynamic_ctx) {
+            if setting.check_dynamic_filters(ctx) {
                 // Deserialize the value
                 match serde_json::from_value(setting.value.clone()) {
                     Ok(v) => return Some(v),
@@ -281,27 +260,10 @@ impl RuntimeSettings {
         let state = self.state.read().unwrap();
         let mut values = HashMap::new();
 
-        // Get effective context
-        let ctx = match self.get_effective_context() {
-            Some(c) => c,
-            None => {
-                // Create minimal context from static
-                Context {
-                    application: self.static_context.application.clone(),
-                    server: self.static_context.server.clone(),
-                    environment: self.static_context.environment.clone(),
-                    libraries_versions: self.static_context.libraries_versions.clone(),
-                    mcs_run_env: self.static_context.mcs_run_env.clone(),
-                    request: None,
-                    custom: HashMap::new(),
-                }
-            }
-        };
-
-        let dynamic_ctx: DynamicContext = (&ctx).into();
+        let ctx = self.get_dynamic_context();
         for (key, settings) in &state.settings {
             for setting in settings {
-                if setting.check_dynamic_filters(&dynamic_ctx) {
+                if setting.check_dynamic_filters(&ctx) {
                     values.insert(key.clone(), setting.value.clone());
                     break;
                 }
@@ -480,32 +442,33 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Context not set")]
-    fn test_get_requires_context() {
+    fn test_get_without_context() {
         let settings = RuntimeSettings::builder()
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
             .build();
 
-        // This should panic because no context is set
-        let _: Option<String> = settings.get("SOME_KEY");
+        // Should not panic, just return None since no settings loaded
+        let result: Option<String> = settings.get("SOME_KEY");
+        assert!(result.is_none());
     }
 
     #[test]
-    fn test_get_with_context() {
+    fn test_get_with_request() {
         let settings = RuntimeSettings::builder()
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
             .build();
 
-        let ctx = Context {
-            application: "test-app".to_string(),
-            ..Default::default()
+        let req = Request {
+            method: "GET".to_string(),
+            path: "/api".to_string(),
+            headers: HashMap::new(),
         };
 
-        let _guard = settings.set_context(ctx);
+        let _guard = settings.set_request(req);
 
         // Should not panic, but return None since no settings loaded
         let result: Option<String> = settings.get("SOME_KEY");
@@ -613,17 +576,14 @@ mod tests {
         };
         settings.merge_settings(response);
 
-        let ctx = Context {
-            application: "test-app".to_string(),
-            ..Default::default()
-        };
+        let ctx = DynamicContext::default();
 
         let result: Option<String> = settings.get_internal("MY_KEY", &ctx);
         assert_eq!(result, Some("high_priority".to_string()));
     }
 
     #[tokio::test]
-    async fn test_with_context_async() {
+    async fn test_with_request_async() {
         let settings = Arc::new(
             RuntimeSettings::builder()
                 .application("test-app")
@@ -645,13 +605,50 @@ mod tests {
         };
         settings.merge_settings(response);
 
-        let ctx = Context {
-            application: "test-app".to_string(),
-            ..Default::default()
+        let req = Request {
+            method: "GET".to_string(),
+            path: "/api".to_string(),
+            headers: HashMap::new(),
         };
 
         let result = settings
-            .with_context(ctx, async {
+            .with_request(req, async {
+                let value: Option<String> = settings.get("TEST_KEY");
+                value
+            })
+            .await;
+
+        assert_eq!(result, Some("async_value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_with_custom_async() {
+        let settings = Arc::new(
+            RuntimeSettings::builder()
+                .application("test-app")
+                .mcs_enabled(false)
+                .env_enabled(false)
+                .build(),
+        );
+
+        // Add a setting
+        let response = ProviderResponse {
+            settings: vec![RawSetting {
+                key: "TEST_KEY".to_string(),
+                priority: 100,
+                filter: HashMap::new(),
+                value: serde_json::json!("async_value"),
+            }],
+            deleted: vec![],
+            version: "1".to_string(),
+        };
+        settings.merge_settings(response);
+
+        let custom: HashMap<String, String> =
+            [("key".to_string(), "value".to_string())].into();
+
+        let result = settings
+            .with_custom(custom, async {
                 let value: Option<String> = settings.get("TEST_KEY");
                 value
             })
@@ -689,15 +686,31 @@ mod tests {
             .env_enabled(false)
             .build();
 
-        let ctx = Context {
-            application: "test-app".to_string(),
-            ..Default::default()
-        };
-
-        let _guard = settings.set_context(ctx);
-
-        // Should return default since key doesn't exist
+        // Should return default since key doesn't exist (no context needed now)
         let result: String = settings.get_or("NONEXISTENT_KEY", "default_value".to_string());
         assert_eq!(result, "default_value");
+    }
+
+    #[test]
+    fn test_set_custom() {
+        let settings = RuntimeSettings::builder()
+            .application("test-app")
+            .mcs_enabled(false)
+            .env_enabled(false)
+            .build();
+
+        let custom: HashMap<String, String> =
+            [("test_key".to_string(), "test_value".to_string())].into();
+
+        {
+            let _guard = settings.set_custom(custom);
+            // Custom context should be set
+            let ctx = settings.get_dynamic_context();
+            assert_eq!(ctx.custom.get("test_key"), Some("test_value"));
+        }
+
+        // After guard is dropped, custom context should be empty
+        let ctx = settings.get_dynamic_context();
+        assert!(ctx.custom.is_empty());
     }
 }
