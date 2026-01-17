@@ -3,7 +3,7 @@
     "key": "SOME_KEY",
     "priority": 100,
     "filter": {
-      "application": "example-service"
+      "application": "rust-example"
     },
     "value": "hello from settings"
   },
@@ -16,12 +16,28 @@
     "key": "DATABASE_CONFIG",
     "priority": 100,
     "filter": {
-      "application": "example-service"
+      "application": "rust-example"
     },
     "value": {
       "host": "localhost",
       "port": 5432,
       "database": "example_db"
     }
+  },
+  {
+    "key": "PATH_SPECIFIC",
+    "priority": 100,
+    "filter": {
+      "url-path": "/api/.*"
+    },
+    "value": "only for /api/* paths"
+  },
+  {
+    "key": "EMAIL_SPECIFIC",
+    "priority": 100,
+    "filter": {
+      "email": ".*@example\\.com"
+    },
+    "value": "only for example.com emails"
   }
 ]

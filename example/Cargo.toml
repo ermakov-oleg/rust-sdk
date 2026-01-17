@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 # async runtime
-tokio = { version = "1.13.0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 # serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -14,12 +14,13 @@ serde_json = "1.0"
 
 # web
 axum = "0.7"
+tower = "0.4"
 
 # Logs
 tracing = "0.1"
 struct-log = { path = "../lib/struct-log" }
 
 # cli
-structopt = "0.3.25"
+clap = { version = "4", features = ["derive"] }
 
 runtime-settings = { path = "../lib/runtime-settings" }
