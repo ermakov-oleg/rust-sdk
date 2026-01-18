@@ -1,6 +1,8 @@
+mod kubernetes;
 mod token;
 mod token_info;
 
+pub use kubernetes::KubernetesAuth;
 pub use token::StaticTokenAuth;
 pub use token_info::TokenInfo;
 
