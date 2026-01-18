@@ -3,5 +3,6 @@ resolver = "2"
 members = [
     "lib/struct-log",
     "lib/runtime-settings",
+    "lib/vault-client",
     "example"
 ]
