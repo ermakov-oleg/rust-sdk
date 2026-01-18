@@ -24,6 +24,9 @@ pub enum SettingsError {
     #[error("Invalid secret reference: {reference}")]
     InvalidSecretReference { reference: String },
 
+    #[error("Invalid secret path in JSON structure")]
+    InvalidSecretPath,
+
     #[error("Secret used but Vault not configured")]
     SecretWithoutVault,
 
