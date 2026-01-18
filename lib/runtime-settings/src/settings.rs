@@ -397,7 +397,7 @@ impl RuntimeSettingsBuilder {
                 self.environment
                     .get("RUNTIME_SETTINGS_BASE_URL")
                     .cloned()
-                    .unwrap_or_else(|| "http://master.runtime-settings.dev3.cian.ru".to_string())
+                    .unwrap_or_else(|| "http://localhost:8080".to_string())
             });
             providers.push(Box::new(McsProvider::new(
                 base_url,

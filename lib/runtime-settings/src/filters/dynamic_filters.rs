@@ -544,9 +544,9 @@ mod tests {
     fn test_email_filter_match() {
         let filter = EmailFilter;
         let mut headers = HashMap::new();
-        headers.insert("x-real-email".to_string(), "user@cian.ru".to_string());
+        headers.insert("x-real-email".to_string(), "user@example.com".to_string());
         let ctx = make_ctx_with_request("/", headers);
-        assert_eq!(filter.check(".*@cian\\.ru", &ctx), FilterResult::Match);
+        assert_eq!(filter.check(".*@example\\.com", &ctx), FilterResult::Match);
     }
 
     #[test]
@@ -730,16 +730,16 @@ mod compiled_dynamic_tests {
     // CompiledEmailFilter tests
     #[test]
     fn test_compiled_email_filter_match() {
-        let filter = CompiledEmailFilter::compile(".*@cian\\.ru").unwrap();
+        let filter = CompiledEmailFilter::compile(".*@example\\.com").unwrap();
         let mut headers = HashMap::new();
-        headers.insert("x-real-email".to_string(), "user@cian.ru".to_string());
+        headers.insert("x-real-email".to_string(), "user@example.com".to_string());
         let ctx = make_ctx_with_request("/", headers);
         assert!(filter.check(&ctx));
     }
 
     #[test]
     fn test_compiled_email_filter_no_match() {
-        let filter = CompiledEmailFilter::compile(".*@cian\\.ru").unwrap();
+        let filter = CompiledEmailFilter::compile(".*@example\\.com").unwrap();
         let mut headers = HashMap::new();
         headers.insert("x-real-email".to_string(), "user@other.com".to_string());
         let ctx = make_ctx_with_request("/", headers);
@@ -748,14 +748,14 @@ mod compiled_dynamic_tests {
 
     #[test]
     fn test_compiled_email_filter_no_request_returns_true() {
-        let filter = CompiledEmailFilter::compile(".*@cian\\.ru").unwrap();
+        let filter = CompiledEmailFilter::compile(".*@example\\.com").unwrap();
         let ctx = DynamicContext::default();
         assert!(filter.check(&ctx));
     }
 
     #[test]
     fn test_compiled_email_filter_no_email_returns_true() {
-        let filter = CompiledEmailFilter::compile(".*@cian\\.ru").unwrap();
+        let filter = CompiledEmailFilter::compile(".*@example\\.com").unwrap();
         let ctx = make_ctx_with_request("/", HashMap::new());
         assert!(filter.check(&ctx));
     }

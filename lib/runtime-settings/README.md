@@ -103,7 +103,7 @@ async fn main() {
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RUNTIME_SETTINGS_APPLICATION` | Application name for `setup_from_env()` | `"unknown"` |
-| `RUNTIME_SETTINGS_BASE_URL` | MCS service URL | `http://master.runtime-settings.dev3.cian.ru` |
+| `RUNTIME_SETTINGS_BASE_URL` | MCS service URL | `http://localhost:8080` |
 | `RUNTIME_SETTINGS_FILE_PATH` | Path to settings JSON file | `runtime-settings.json` |
 | `MCS_RUN_ENV` | MCS environment filter value | None |
 | `VAULT_ADDR` | Vault server address | Required for secrets |

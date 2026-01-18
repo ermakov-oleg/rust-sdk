@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use uuid::Uuid;
 
-const DEFAULT_MCS_BASE_URL: &str = "http://master.runtime-settings.dev3.cian.ru";
+const DEFAULT_MCS_BASE_URL: &str = "http://localhost:8080";
 
 #[derive(Debug, Serialize)]
 struct McsRequest {
