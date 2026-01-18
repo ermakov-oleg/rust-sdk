@@ -15,6 +15,7 @@ use crate::scoped::{
 use crate::secrets::SecretsService;
 use crate::watchers::{Watcher, WatcherId, WatchersService};
 use semver::Version;
+use vault_client::VaultClient;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -297,6 +298,7 @@ pub struct RuntimeSettingsBuilder {
     file_path: Option<String>,
     env_enabled: bool,
     refresh_interval: Duration,
+    vault_client: Option<VaultClient>,
 }
 
 impl RuntimeSettingsBuilder {
@@ -317,6 +319,7 @@ impl RuntimeSettingsBuilder {
             file_path: None,
             env_enabled: true,
             refresh_interval: Duration::from_secs(30),
+            vault_client: None,
         }
     }
 
@@ -368,6 +371,12 @@ impl RuntimeSettingsBuilder {
         self
     }
 
+    /// Set VaultClient for secrets
+    pub fn vault_client(mut self, client: VaultClient) -> Self {
+        self.vault_client = Some(client);
+        self
+    }
+
     /// Build the RuntimeSettings instance
     pub fn build(self) -> RuntimeSettings {
         let mut providers: Vec<Box<dyn SettingsProvider>> = Vec::new();
@@ -405,9 +414,11 @@ impl RuntimeSettingsBuilder {
             mcs_run_env: self.mcs_run_env,
         };
 
-        // Try to create secrets service from env, fallback to no vault
-        let secrets =
-            SecretsService::from_env().unwrap_or_else(|_| SecretsService::new_without_vault());
+        // Create secrets service with vault client if provided
+        let secrets = match self.vault_client {
+            Some(client) => SecretsService::new(client),
+            None => SecretsService::new_without_vault(),
+        };
 
         RuntimeSettings {
             providers,

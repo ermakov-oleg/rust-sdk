@@ -1,21 +1,20 @@
 // lib/runtime-settings/tests/integration_vault.rs
 
 use runtime_settings::SecretsService;
-use vaultrs::client::{VaultClient, VaultClientSettingsBuilder};
+use vault_client::VaultClient;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn mock_vault_client(mock_uri: &str, token: &str) -> VaultClient {
-    let settings = VaultClientSettingsBuilder::default()
-        .address(mock_uri)
+async fn mock_vault_client(mock_uri: &str, token: &str) -> VaultClient {
+    VaultClient::builder()
+        .base_url(mock_uri)
         .token(token)
         .build()
-        .unwrap();
-    VaultClient::new(settings).unwrap()
+        .await
+        .unwrap()
 }
 
 /// Helper to create a Vault KV2 response in the expected format.
-/// The vaultrs library expects responses wrapped in an EndpointResult structure.
 fn vault_kv2_response(data: serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "request_id": "test-request-id",
@@ -56,7 +55,7 @@ async fn test_vault_get_secret() {
         .await;
 
     // Create VaultClient pointing to mock server
-    let client = mock_vault_client(&mock_server.uri(), "test-token");
+    let client = mock_vault_client(&mock_server.uri(), "test-token").await;
 
     // Create SecretsService with that client
     let secrets_service = SecretsService::new(client);
@@ -95,7 +94,7 @@ async fn test_vault_secret_caching() {
         .mount(&mock_server)
         .await;
 
-    let client = mock_vault_client(&mock_server.uri(), "test-token");
+    let client = mock_vault_client(&mock_server.uri(), "test-token").await;
     let secrets_service = SecretsService::new(client);
 
     // First call - should hit the mock
@@ -131,7 +130,7 @@ async fn test_vault_secret_not_found() {
         .mount(&mock_server)
         .await;
 
-    let client = mock_vault_client(&mock_server.uri(), "test-token");
+    let client = mock_vault_client(&mock_server.uri(), "test-token").await;
     let secrets_service = SecretsService::new(client);
 
     // Verify get() returns error
@@ -164,7 +163,7 @@ async fn test_vault_key_not_found_in_secret() {
         .mount(&mock_server)
         .await;
 
-    let client = mock_vault_client(&mock_server.uri(), "test-token");
+    let client = mock_vault_client(&mock_server.uri(), "test-token").await;
     let secrets_service = SecretsService::new(client);
 
     // Try to get non-existent key
