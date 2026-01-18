@@ -15,18 +15,27 @@ struct CachedSecret {
     value: serde_json::Value,
     #[allow(dead_code)]
     lease_id: Option<String>,
-    #[allow(dead_code)]
     lease_duration: Option<Duration>,
-    #[allow(dead_code)]
     renewable: bool,
-    #[allow(dead_code)]
     fetched_at: Instant,
+}
+
+impl CachedSecret {
+    fn needs_refresh(&self, threshold: f64) -> bool {
+        match self.lease_duration {
+            Some(duration) if self.renewable => {
+                let elapsed = self.fetched_at.elapsed();
+                let threshold_duration = Duration::from_secs_f64(duration.as_secs_f64() * threshold);
+                elapsed >= threshold_duration
+            }
+            _ => false,
+        }
+    }
 }
 
 pub struct SecretsService {
     client: Option<VaultClient>,
     cache: RwLock<HashMap<String, CachedSecret>>,
-    #[allow(dead_code)]
     refresh_intervals: HashMap<String, Duration>,
 }
 
@@ -123,9 +132,58 @@ impl SecretsService {
             })
     }
 
+    fn needs_static_refresh(&self, path: &str, cached: &CachedSecret) -> bool {
+        if cached.renewable {
+            return false;
+        }
+        for (pattern, interval) in &self.refresh_intervals {
+            if path.contains(pattern) {
+                return cached.fetched_at.elapsed() >= *interval;
+            }
+        }
+        false
+    }
+
     /// Refresh all cached secrets
     pub async fn refresh(&self) -> Result<(), SettingsError> {
-        // TODO: Implement lease renewal and refresh logic
+        let client = match &self.client {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let paths_to_refresh: Vec<String> = {
+            let cache = self.cache.read().await;
+            cache
+                .iter()
+                .filter(|(path, cached)| {
+                    cached.needs_refresh(0.75) || self.needs_static_refresh(path, cached)
+                })
+                .map(|(path, _)| path.clone())
+                .collect()
+        };
+
+        for path in paths_to_refresh {
+            match vaultrs::kv2::read::<serde_json::Value>(client, "secret", &path).await {
+                Ok(secret) => {
+                    let mut cache = self.cache.write().await;
+                    cache.insert(
+                        path.clone(),
+                        CachedSecret {
+                            value: secret,
+                            lease_id: None,
+                            lease_duration: None,
+                            renewable: false,
+                            fetched_at: Instant::now(),
+                        },
+                    );
+                    tracing::debug!(path = %path, "Refreshed secret");
+                }
+                Err(e) => {
+                    tracing::warn!(path = %path, error = %e, "Failed to refresh secret");
+                }
+            }
+        }
+
         Ok(())
     }
 }
