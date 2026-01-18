@@ -1,10 +1,12 @@
 mod kubernetes;
+mod manager;
 mod oidc;
 mod oidc_cache;
 mod token;
 mod token_info;
 
 pub use kubernetes::KubernetesAuth;
+pub use manager::{TokenManager, TokenManagerConfig};
 pub use oidc::OidcAuth;
 pub use oidc_cache::OidcCache;
 pub use token::StaticTokenAuth;
