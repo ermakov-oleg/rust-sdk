@@ -5,6 +5,7 @@ use crate::entities::McsResponse;
 use crate::error::SettingsError;
 use async_trait::async_trait;
 use serde::Serialize;
+use uuid::Uuid;
 
 const DEFAULT_MCS_BASE_URL: &str = "http://master.runtime-settings.dev3.cian.ru";
 
@@ -56,7 +57,14 @@ impl SettingsProvider for McsProvider {
             mcs_run_env: self.mcs_run_env.clone(),
         };
 
-        let response = self.client.get(&url).query(&request).send().await?;
+        let operation_id = Uuid::new_v4().to_string();
+        let response = self
+            .client
+            .get(&url)
+            .query(&request)
+            .header("X-OperationId", &operation_id)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             return Err(SettingsError::McsResponse {

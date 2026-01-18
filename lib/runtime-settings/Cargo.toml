@@ -27,6 +27,7 @@ semver = "1"
 rand = "0.9"
 gethostname = "1"
 dashmap = "6"
+uuid = { version = "1.19.0", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
