@@ -1,6 +1,11 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
+
+use futures::FutureExt;
 
 /// Unique identifier for a watcher
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -14,8 +19,15 @@ impl WatcherId {
     }
 }
 
-/// Sync watcher callback
-pub type Watcher = Box<dyn Fn(Option<serde_json::Value>, Option<serde_json::Value>) + Send + Sync>;
+/// Async watcher callback
+pub type Watcher = Box<
+    dyn Fn(
+            Option<serde_json::Value>,
+            Option<serde_json::Value>,
+        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync,
+>;
 
 struct WatcherEntry {
     id: WatcherId,
@@ -55,32 +67,41 @@ impl WatchersService {
     }
 
     /// Check for changes and notify watchers
+    #[allow(clippy::type_complexity)]
     pub async fn check(&self, current_values: &HashMap<String, serde_json::Value>) {
-        let watchers = self.watchers.read().unwrap();
-        let mut snapshot = self.snapshot.write().unwrap();
+        // Collect callbacks to invoke outside the lock
+        let callbacks_to_invoke = {
+            let watchers = self.watchers.read().unwrap();
+            let mut snapshot = self.snapshot.write().unwrap();
+            let mut callbacks: Vec<(String, Pin<Box<dyn Future<Output = ()> + Send>>)> = Vec::new();
 
-        for (key, entries) in watchers.iter() {
-            let old_value = snapshot.get(key).cloned();
-            let new_value = current_values.get(key).cloned();
+            for (key, entries) in watchers.iter() {
+                let old_value = snapshot.get(key).cloned();
+                let new_value = current_values.get(key).cloned();
 
-            if old_value != new_value {
-                // Update snapshot
-                if let Some(ref v) = new_value {
-                    snapshot.insert(key.clone(), v.clone());
-                } else {
-                    snapshot.remove(key);
-                }
+                if old_value != new_value {
+                    // Update snapshot
+                    if let Some(ref v) = new_value {
+                        snapshot.insert(key.clone(), v.clone());
+                    } else {
+                        snapshot.remove(key);
+                    }
 
-                // Notify watchers
-                for entry in entries {
-                    // Catch panics in watchers
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        (entry.callback)(old_value.clone(), new_value.clone());
-                    }));
-                    if let Err(e) = result {
-                        tracing::error!("Watcher for key '{}' panicked: {:?}", key, e);
+                    // Collect callbacks for later invocation
+                    for entry in entries {
+                        let future = (entry.callback)(old_value.clone(), new_value.clone());
+                        callbacks.push((key.clone(), future));
                     }
                 }
+            }
+
+            callbacks
+        };
+
+        // Invoke callbacks outside the lock
+        for (key, future) in callbacks_to_invoke {
+            if let Err(e) = AssertUnwindSafe(future).catch_unwind().await {
+                tracing::error!(key = %key, "Watcher callback panicked: {:?}", e);
             }
         }
     }
@@ -114,7 +135,10 @@ mod tests {
         let id = service.add(
             "MY_KEY",
             Box::new(move |_, _| {
-                counter_clone.fetch_add(1, Ordering::SeqCst);
+                let counter = counter_clone.clone();
+                Box::pin(async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                })
             }),
         );
 
@@ -139,9 +163,12 @@ mod tests {
         service.add(
             "KEY",
             Box::new(move |old, new| {
-                assert!(old.is_none());
-                assert_eq!(new, Some(serde_json::json!("new_value")));
-                called_clone.fetch_add(1, Ordering::SeqCst);
+                let called = called_clone.clone();
+                Box::pin(async move {
+                    assert!(old.is_none());
+                    assert_eq!(new, Some(serde_json::json!("new_value")));
+                    called.fetch_add(1, Ordering::SeqCst);
+                })
             }),
         );
 
@@ -152,5 +179,79 @@ mod tests {
         service.check(&current_values).await;
 
         assert_eq!(called.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_watchers_same_key() {
+        let service = WatchersService::new();
+
+        let counter1 = Arc::new(AtomicU32::new(0));
+        let counter2 = Arc::new(AtomicU32::new(0));
+        let c1 = counter1.clone();
+        let c2 = counter2.clone();
+
+        service.add(
+            "KEY",
+            Box::new(move |_, _| {
+                let c = c1.clone();
+                Box::pin(async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                })
+            }),
+        );
+        service.add(
+            "KEY",
+            Box::new(move |_, _| {
+                let c = c2.clone();
+                Box::pin(async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                })
+            }),
+        );
+
+        let mut current_values = HashMap::new();
+        current_values.insert("KEY".to_string(), serde_json::json!("value"));
+
+        service.check(&current_values).await;
+
+        assert_eq!(counter1.load(Ordering::SeqCst), 1);
+        assert_eq!(counter2.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_panic_in_watcher_does_not_stop_others() {
+        let service = WatchersService::new();
+
+        let counter = Arc::new(AtomicU32::new(0));
+        let c = counter.clone();
+
+        // First watcher that panics
+        service.add(
+            "KEY",
+            Box::new(move |_, _| {
+                Box::pin(async move {
+                    panic!("intentional panic");
+                })
+            }),
+        );
+
+        // Second watcher that should still execute
+        service.add(
+            "KEY",
+            Box::new(move |_, _| {
+                let c = c.clone();
+                Box::pin(async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                })
+            }),
+        );
+
+        let mut current_values = HashMap::new();
+        current_values.insert("KEY".to_string(), serde_json::json!("value"));
+
+        service.check(&current_values).await;
+
+        // Second watcher should have executed despite first panicking
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

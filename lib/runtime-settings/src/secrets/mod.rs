@@ -25,7 +25,8 @@ impl CachedSecret {
         match self.lease_duration {
             Some(duration) if self.renewable => {
                 let elapsed = self.fetched_at.elapsed();
-                let threshold_duration = Duration::from_secs_f64(duration.as_secs_f64() * threshold);
+                let threshold_duration =
+                    Duration::from_secs_f64(duration.as_secs_f64() * threshold);
                 elapsed >= threshold_duration
             }
             _ => false,

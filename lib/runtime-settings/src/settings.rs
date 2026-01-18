@@ -132,11 +132,7 @@ impl RuntimeSettings {
     }
 
     /// Create a getter function for a setting
-    pub fn getter<T>(
-        &self,
-        key: &'static str,
-        default: T,
-    ) -> impl Fn(&RuntimeSettings) -> Arc<T>
+    pub fn getter<T>(&self, key: &'static str, default: T) -> impl Fn(&RuntimeSettings) -> Arc<T>
     where
         T: DeserializeOwned + Send + Sync + Clone + 'static,
     {
