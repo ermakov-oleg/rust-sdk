@@ -114,6 +114,13 @@ impl RuntimeSettings {
         Ok(())
     }
 
+    /// Refresh settings with a configurable timeout
+    pub async fn refresh_with_timeout(&self, timeout: Duration) -> Result<(), SettingsError> {
+        tokio::time::timeout(timeout, self.refresh())
+            .await
+            .map_err(|_| SettingsError::Timeout)?
+    }
+
     /// Get setting value using current scoped context
     pub fn get<T>(&self, key: &str) -> Option<Arc<T>>
     where
@@ -719,5 +726,18 @@ mod tests {
         // After guard is dropped, custom context should be empty
         let ctx = settings.get_dynamic_context();
         assert!(ctx.custom.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_refresh_with_timeout_succeeds() {
+        let settings = RuntimeSettings::builder()
+            .application("test-app")
+            .mcs_enabled(false)
+            .env_enabled(false)
+            .build();
+
+        // With no providers, refresh should complete instantly
+        let result = settings.refresh_with_timeout(Duration::from_secs(1)).await;
+        assert!(result.is_ok());
     }
 }

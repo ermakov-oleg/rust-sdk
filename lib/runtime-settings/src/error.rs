@@ -35,4 +35,7 @@ pub enum SettingsError {
 
     #[error("Invalid version specifier: {spec}")]
     InvalidVersionSpec { spec: String },
+
+    #[error("Request timed out")]
+    Timeout,
 }
