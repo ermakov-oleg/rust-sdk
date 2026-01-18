@@ -9,4 +9,3 @@ mod error;
 mod models;
 
 pub use error::VaultError;
-pub use models::{KvData, KvMetadata, KvVersion};
