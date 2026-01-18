@@ -203,7 +203,12 @@ impl RuntimeSettings {
         for setting in settings {
             // Check dynamic filters using compiled filters
             if setting.check_dynamic_filters(ctx) {
-                return setting.get_value::<T>();
+                // Invalidate cache if secrets version changed
+                if setting.has_secrets() {
+                    setting.invalidate_if_stale(self.secrets.version());
+                }
+
+                return setting.get_value::<T>(&self.secrets);
             }
         }
 

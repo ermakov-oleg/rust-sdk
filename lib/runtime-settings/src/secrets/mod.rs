@@ -3,12 +3,86 @@
 pub mod resolver;
 
 use crate::error::SettingsError;
+
+/// Key for navigating JSON structure
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsonPathKey {
+    Field(String),
+    Index(usize),
+}
+
+/// Information about a single secret usage in a setting value
+#[derive(Debug, Clone)]
+pub struct SecretUsage {
+    /// Vault path: "db/creds"
+    pub path: String,
+    /// Key within the secret: "password"
+    pub key: String,
+    /// Where to substitute in JSON: ["connection", "password"]
+    pub value_path: Vec<JsonPathKey>,
+}
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use vaultrs::client::{VaultClient, VaultClientSettingsBuilder};
 
-pub use resolver::resolve_secrets;
+pub use resolver::{resolve_secrets, resolve_secrets_sync};
+
+/// Parse secret usages from a JSON value during Setting compilation
+pub fn find_secret_usages(value: &serde_json::Value) -> Result<Vec<SecretUsage>, SettingsError> {
+    let mut usages = Vec::new();
+    find_secrets_recursive(value, &mut Vec::new(), &mut usages)?;
+    Ok(usages)
+}
+
+fn find_secrets_recursive(
+    value: &serde_json::Value,
+    current_path: &mut Vec<JsonPathKey>,
+    usages: &mut Vec<SecretUsage>,
+) -> Result<(), SettingsError> {
+    match value {
+        serde_json::Value::Object(map) => {
+            // Check for {"$secret": "path:key"}
+            if map.len() == 1 {
+                if let Some(serde_json::Value::String(reference)) = map.get("$secret") {
+                    let (path, key) = parse_secret_ref(reference)?;
+                    usages.push(SecretUsage {
+                        path,
+                        key,
+                        value_path: current_path.clone(),
+                    });
+                    return Ok(());
+                }
+            }
+
+            // Recursively process fields
+            for (field, v) in map {
+                current_path.push(JsonPathKey::Field(field.clone()));
+                find_secrets_recursive(v, current_path, usages)?;
+                current_path.pop();
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                current_path.push(JsonPathKey::Index(i));
+                find_secrets_recursive(v, current_path, usages)?;
+                current_path.pop();
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_secret_ref(reference: &str) -> Result<(String, String), SettingsError> {
+    reference
+        .split_once(':')
+        .map(|(p, k)| (p.to_string(), k.to_string()))
+        .ok_or_else(|| SettingsError::InvalidSecretReference {
+            reference: reference.to_string(),
+        })
+}
 
 /// Cached secret with metadata
 struct CachedSecret {
@@ -38,6 +112,7 @@ pub struct SecretsService {
     client: Option<VaultClient>,
     cache: RwLock<HashMap<String, CachedSecret>>,
     refresh_intervals: HashMap<String, Duration>,
+    version: AtomicU64,
 }
 
 impl SecretsService {
@@ -47,6 +122,7 @@ impl SecretsService {
             client: None,
             cache: RwLock::new(HashMap::new()),
             refresh_intervals: Self::load_refresh_intervals(),
+            version: AtomicU64::new(0),
         }
     }
 
@@ -56,7 +132,13 @@ impl SecretsService {
             client: Some(client),
             cache: RwLock::new(HashMap::new()),
             refresh_intervals: Self::load_refresh_intervals(),
+            version: AtomicU64::new(0),
         }
+    }
+
+    /// Get current version (for cache invalidation in Settings)
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::Acquire)
     }
 
     /// Create Vault client from environment
@@ -152,6 +234,32 @@ impl SecretsService {
             })
     }
 
+    /// Synchronous get for use in RuntimeSettings::get()
+    ///
+    /// Uses block_in_place to fetch from Vault if not cached.
+    /// Only works in multi-threaded tokio runtime.
+    pub fn get_sync(&self, path: &str, key: &str) -> Result<serde_json::Value, SettingsError> {
+        // Fast path: check cache with blocking read
+        {
+            let cache = self.cache.blocking_read();
+            if let Some(cached) = cache.get(path) {
+                if let Some(value) = cached.value.get(key) {
+                    return Ok(value.clone());
+                }
+                // Path exists but key not found
+                return Err(SettingsError::SecretKeyNotFound {
+                    path: path.to_string(),
+                    key: key.to_string(),
+                });
+            }
+        }
+
+        // Slow path: fetch from Vault using block_in_place
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.get(path, key))
+        })
+    }
+
     fn needs_static_refresh(&self, path: &str, cached: &CachedSecret) -> bool {
         if cached.renewable {
             return false;
@@ -182,21 +290,18 @@ impl SecretsService {
                 .collect()
         };
 
+        let mut any_changed = false;
+
         for path in paths_to_refresh {
             match vaultrs::kv2::read::<serde_json::Value>(client, "secret", &path).await {
-                Ok(secret) => {
-                    let mut cache = self.cache.write().await;
-                    cache.insert(
-                        path.clone(),
-                        CachedSecret {
-                            value: secret,
-                            lease_id: None,
-                            lease_duration: None,
-                            renewable: false,
-                            fetched_at: Instant::now(),
-                        },
-                    );
-                    tracing::debug!(path = %path, "Refreshed secret");
+                Ok(new_value) => {
+                    let changed = self.update_cached_secret(&path, new_value).await;
+                    if changed {
+                        any_changed = true;
+                        tracing::debug!(path = %path, "Secret value changed");
+                    } else {
+                        tracing::debug!(path = %path, "Secret refreshed (unchanged)");
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(path = %path, error = %e, "Failed to refresh secret");
@@ -204,6 +309,115 @@ impl SecretsService {
             }
         }
 
+        if any_changed {
+            self.version.fetch_add(1, Ordering::Release);
+        }
+
         Ok(())
+    }
+
+    /// Update cached secret, returns true if value changed
+    async fn update_cached_secret(&self, path: &str, new_value: serde_json::Value) -> bool {
+        let mut cache = self.cache.write().await;
+
+        let changed = cache
+            .get(path)
+            .map(|cached| cached.value != new_value)
+            .unwrap_or(true);
+
+        cache.insert(
+            path.to_string(),
+            CachedSecret {
+                value: new_value,
+                lease_id: None,
+                lease_duration: None,
+                renewable: false,
+                fetched_at: Instant::now(),
+            },
+        );
+
+        changed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_secret_usages_no_secrets() {
+        let value = serde_json::json!({"host": "localhost", "port": 5432});
+        let usages = find_secret_usages(&value).unwrap();
+        assert!(usages.is_empty());
+    }
+
+    #[test]
+    fn test_find_secret_usages_single_secret() {
+        let value = serde_json::json!({
+            "host": "localhost",
+            "password": {"$secret": "db/creds:password"}
+        });
+        let usages = find_secret_usages(&value).unwrap();
+        assert_eq!(usages.len(), 1);
+        assert_eq!(usages[0].path, "db/creds");
+        assert_eq!(usages[0].key, "password");
+        assert_eq!(usages[0].value_path, vec![JsonPathKey::Field("password".to_string())]);
+    }
+
+    #[test]
+    fn test_find_secret_usages_nested_secret() {
+        let value = serde_json::json!({
+            "database": {
+                "connection": {
+                    "password": {"$secret": "db/creds:password"}
+                }
+            }
+        });
+        let usages = find_secret_usages(&value).unwrap();
+        assert_eq!(usages.len(), 1);
+        assert_eq!(usages[0].path, "db/creds");
+        assert_eq!(usages[0].key, "password");
+        assert_eq!(usages[0].value_path, vec![
+            JsonPathKey::Field("database".to_string()),
+            JsonPathKey::Field("connection".to_string()),
+            JsonPathKey::Field("password".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_find_secret_usages_in_array() {
+        let value = serde_json::json!({
+            "servers": [
+                {"host": "server1", "password": {"$secret": "servers/1:pass"}},
+                {"host": "server2", "password": {"$secret": "servers/2:pass"}}
+            ]
+        });
+        let usages = find_secret_usages(&value).unwrap();
+        assert_eq!(usages.len(), 2);
+        assert_eq!(usages[0].path, "servers/1");
+        assert_eq!(usages[1].path, "servers/2");
+    }
+
+    #[test]
+    fn test_find_secret_usages_invalid_reference() {
+        let value = serde_json::json!({
+            "password": {"$secret": "no-colon-here"}
+        });
+        let result = find_secret_usages(&value);
+        assert!(matches!(result, Err(SettingsError::InvalidSecretReference { .. })));
+    }
+
+    #[test]
+    fn test_find_secret_usages_root_level_secret() {
+        let value = serde_json::json!({"$secret": "path:key"});
+        let usages = find_secret_usages(&value).unwrap();
+        assert_eq!(usages.len(), 1);
+        assert!(usages[0].value_path.is_empty());
+    }
+
+    #[test]
+    fn test_secrets_service_version_starts_at_zero() {
+        let service = SecretsService::new_without_vault();
+        assert_eq!(service.version(), 0);
     }
 }
