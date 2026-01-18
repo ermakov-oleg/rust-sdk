@@ -1,11 +1,13 @@
+use crate::storage::SpanFieldsStorage;
 use serde::ser::{SerializeMap, Serializer};
 use serde_json::Value;
+use std::cell::RefCell;
 use std::io::Write;
 use time::format_description::well_known::Rfc3339;
-use tracing::{Event, Subscriber};
-use tracing_bunyan_formatter::JsonStorage;
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 pub struct JsonLogLayer<W: for<'a> MakeWriter<'a> + 'static> {
@@ -19,7 +21,7 @@ const DATE: &str = "date";
 const RUNTIME: &str = "runtime";
 const APPLICATION: &str = "application";
 const LEVEL: &str = "level";
-const HOSTNAME: &str = "container_id";
+const HOSTNAME: &str = "hostname";
 const MESSAGE: &str = "message";
 const LOGGER: &str = "logger";
 const LINENO: &str = "lineno";
@@ -27,7 +29,7 @@ const FILE: &str = "file";
 const VERSION: &str = "version";
 const MESSAGE_TYPE: &str = "message_type";
 
-const RESERVED_FIELDS: [&str; 10] = [
+const RESERVED_FIELDS: [&str; 11] = [
     DATE,
     RUNTIME,
     APPLICATION,
@@ -38,7 +40,22 @@ const RESERVED_FIELDS: [&str; 10] = [
     LINENO,
     FILE,
     VERSION,
+    MESSAGE_TYPE,
 ];
+
+thread_local! {
+    static BUFFER: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
+
+fn level_to_str(level: &Level) -> &'static str {
+    match *level {
+        Level::ERROR => "error",
+        Level::WARN => "warn",
+        Level::INFO => "info",
+        Level::DEBUG => "debug",
+        Level::TRACE => "trace",
+    }
+}
 
 impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
     pub fn new(application: String, version: String, make_writer: W) -> Self {
@@ -47,6 +64,20 @@ impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
             application,
             version,
             hostname: gethostname::gethostname().to_string_lossy().into_owned(),
+        }
+    }
+
+    pub fn with_hostname(
+        application: String,
+        version: String,
+        hostname: String,
+        make_writer: W,
+    ) -> Self {
+        Self {
+            make_writer,
+            application,
+            version,
+            hostname,
         }
     }
 
@@ -63,61 +94,62 @@ impl<W: for<'a> MakeWriter<'a> + 'static> JsonLogLayer<W> {
         if let Ok(date) = &time::OffsetDateTime::now_utc().format(&Rfc3339) {
             map_serializer.serialize_entry(DATE, date)?;
         }
-        map_serializer.serialize_entry(
-            LEVEL,
-            &format!("{}", event.metadata().level()).to_lowercase(),
-        )?;
+        map_serializer.serialize_entry(LEVEL, level_to_str(event.metadata().level()))?;
         map_serializer.serialize_entry(LOGGER, event.metadata().target())?;
         map_serializer.serialize_entry(LINENO, &event.metadata().line())?;
         map_serializer.serialize_entry(FILE, &event.metadata().file())?;
-        map_serializer.serialize_entry(MESSAGE, &message)?;
+        map_serializer.serialize_entry(MESSAGE, message)?;
         Ok(())
     }
 
-    fn emit(&self, mut buffer: Vec<u8>) -> Result<(), std::io::Error> {
-        buffer.write_all(b"\n")?;
-        self.make_writer.make_writer().write_all(&buffer)
+    fn emit(&self, buffer: &[u8]) -> Result<(), std::io::Error> {
+        let mut writer = self.make_writer.make_writer();
+        writer.write_all(buffer)?;
+        writer.write_all(b"\n")
     }
 }
+
 impl<S, W> Layer<S> for JsonLogLayer<W>
 where
-    S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+    S: Subscriber + for<'a> LookupSpan<'a>,
     W: for<'a> MakeWriter<'a> + 'static,
 {
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
-        let mut event_visitor = JsonStorage::default();
         let current_span = ctx.lookup_current();
-        event.record(&mut event_visitor);
 
-        let format = || {
-            let mut buffer = Vec::new();
-            let mut message_type_provided = false;
+        // Collect event fields
+        let mut event_storage = SpanFieldsStorage::default();
+        event.record(&mut event_storage);
 
-            let mut serializer = serde_json::Serializer::new(&mut buffer);
+        let format_result: std::io::Result<()> = BUFFER.with(|buf| {
+            let mut buf = buf.borrow_mut();
+            buf.clear();
+
+            let mut serializer = serde_json::Serializer::new(&mut *buf);
             let mut map_serializer = serializer.serialize_map(None)?;
 
-            let message = format_event_message(event, &event_visitor);
+            let message = format_event_message(event, &event_storage);
             self.serialize_core_fields(&mut map_serializer, &message, event)?;
 
-            // Add all the other fields associated with the event, expect the message we already used.
-            for (key, value) in event_visitor
-                .values()
-                .iter()
-                .filter(|(&key, _)| !RESERVED_FIELDS.contains(&key))
-            {
-                if key.eq(&MESSAGE_TYPE) {
-                    message_type_provided = true
+            let mut message_type_found = false;
+
+            // Add event fields (except reserved)
+            for (key, value) in event_storage.values().iter() {
+                if *key == MESSAGE_TYPE {
+                    message_type_found = true;
                 }
-                map_serializer.serialize_entry(key, value)?;
+                if !RESERVED_FIELDS.contains(key) {
+                    map_serializer.serialize_entry(key, value)?;
+                }
             }
 
-            // Add all the fields from the current span, if we have one.
+            // Add span fields
             if let Some(span) = &current_span {
                 let extensions = span.extensions();
-                if let Some(visitor) = extensions.get::<JsonStorage>() {
-                    for (key, value) in visitor.values() {
-                        if key.eq(&MESSAGE_TYPE) {
-                            message_type_provided = true
+                if let Some(storage) = extensions.get::<SpanFieldsStorage>() {
+                    for (key, value) in storage.values() {
+                        if *key == MESSAGE_TYPE {
+                            message_type_found = true;
                         }
                         if !RESERVED_FIELDS.contains(key) {
                             map_serializer.serialize_entry(key, value)?;
@@ -125,24 +157,24 @@ where
                     }
                 }
             }
-            if !message_type_provided {
+
+            // Add default message_type if not provided
+            if !message_type_found {
                 map_serializer.serialize_entry(MESSAGE_TYPE, "app")?;
             }
 
             map_serializer.end()?;
-            Ok(buffer)
-        };
 
-        let result: std::io::Result<Vec<u8>> = format();
-        if let Ok(formatted) = result {
-            let _ = self.emit(formatted);
-        }
+            self.emit(&buf)
+        });
+
+        // Silently ignore errors - logging should not break the application
+        let _ = format_result;
     }
 }
 
-fn format_event_message(event: &Event, event_visitor: &JsonStorage<'_>) -> String {
-    // Extract the "message" field, if provided. Fallback to the target, if missing.
-    let message = event_visitor
+fn format_event_message(event: &Event, storage: &SpanFieldsStorage) -> String {
+    storage
         .values()
         .get("message")
         .and_then(|v| match v {
@@ -150,7 +182,5 @@ fn format_event_message(event: &Event, event_visitor: &JsonStorage<'_>) -> Strin
             _ => None,
         })
         .unwrap_or_else(|| event.metadata().target())
-        .to_owned();
-
-    message
+        .to_owned()
 }
