@@ -21,5 +21,6 @@ pub use scoped::{
 };
 pub use secrets::{resolve_secrets, SecretsService};
 pub use settings::{RuntimeSettings, RuntimeSettingsBuilder};
+pub use vault_client::{VaultClient, VaultClientBuilder};
 pub use setup::{settings, setup, setup_from_env};
 pub use watchers::{Watcher, WatcherId, WatchersService};
