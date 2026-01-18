@@ -1811,7 +1811,6 @@ name = "struct-log"
 version = "0.5.0"
 dependencies = [
  "gethostname 1.1.0",
- "lazy_static",
  "log",
  "serde",
  "serde_json",

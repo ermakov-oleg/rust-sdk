@@ -3,12 +3,10 @@ use std::sync::Mutex;
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use tracing::{error, info, span, Level};
-use tracing_bunyan_formatter::JsonStorageLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
-use lazy_static::lazy_static;
-use struct_log::JsonLogLayer;
+use struct_log::{JsonLogLayer, StorageLayer};
 
 use crate::mock_writer::MockWriter;
 
@@ -16,10 +14,7 @@ mod mock_writer;
 
 /// Tests have to be run on a single thread because we are re-using the same buffer for
 /// all of them.
-type InMemoryBuffer = Mutex<Vec<u8>>;
-lazy_static! {
-    static ref BUFFER: InMemoryBuffer = Mutex::new(vec![]);
-}
+static BUFFER: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
 // Run a closure and collect the output emitted by the tracing instrumentation using an in-memory buffer.
 fn run_and_get_raw_output<F: Fn()>(action: F) -> String {
@@ -27,7 +22,7 @@ fn run_and_get_raw_output<F: Fn()>(action: F) -> String {
         MockWriter::new(&BUFFER)
     });
     let subscriber = Registry::default()
-        .with(JsonStorageLayer)
+        .with(StorageLayer)
         .with(formatting_layer);
     tracing::subscriber::with_default(subscriber, action);
 
@@ -86,7 +81,7 @@ fn each_line_has_the_base_fields() {
         assert!(record.get("file").is_some());
         assert!(record.get("lineno").is_some());
         assert!(record.get("logger").is_some());
-        assert!(record.get("container_id").is_some());
+        assert!(record.get("hostname").is_some());
         assert!(record.get("version").is_some());
         assert!(record.get("application").is_some());
         assert_eq!(
