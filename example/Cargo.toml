@@ -1,23 +1,20 @@
 [package]
 name = "example"
 version = "0.1.0"
-edition = "2021"
-
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-# async runtime
-tokio = { version = "1", features = ["full"] }
-
-# serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+tokio = { workspace = true, features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
 
 # web
 axum = "0.8"
 tower = "0.5"
 
 # Logs
-tracing = "0.1"
 struct-log = { path = "../lib/struct-log" }
 
 # cli

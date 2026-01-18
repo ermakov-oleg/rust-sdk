@@ -1,19 +1,23 @@
 [package]
 name = "runtime-settings"
 version = "0.2.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-# Async runtime
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "fs"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+gethostname.workspace = true
+
+# Async
 async-trait = "0.1"
 
 # HTTP
 reqwest = { version = "0.13", features = ["json", "query"] }
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 json5 = "1"
 
 # Vault
@@ -22,11 +26,9 @@ vaultrs = "0.7"
 # Utilities
 futures = "0.3"
 thiserror = "2"
-tracing = "0.1"
 regex = "1"
 semver = "1"
 rand = "0.9"
-gethostname = "1"
 dashmap = "6"
 uuid = { version = "1.19.0", features = ["v4"] }
 
