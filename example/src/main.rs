@@ -23,7 +23,8 @@ pub enum Command {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
-    let _guard = setup_logger(APPLICATION_NAME.to_string(), VERSION.to_string());
+    let _guard = setup_logger(APPLICATION_NAME.to_string(), VERSION.to_string())
+        .expect("Failed to setup logger");
 
     // Initialize runtime settings with new API
     let settings = Arc::new(
