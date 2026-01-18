@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create a Rust library analogous to Python cian-vault with auto-detection of authentication method and background token renewal.
+**Goal:** Create a Rust library for HashiCorp Vault with auto-detection of authentication method and background token renewal.
 
 **Architecture:** VaultClient wraps vaultrs internally, adding TokenManager for automatic authentication and renewal. Auth methods (Token, K8s, OIDC) implement a common trait. Background tokio task handles token refresh at 75% TTL.
 

@@ -1,6 +1,6 @@
 # vault-client Library Design
 
-Rust-аналог Python библиотеки `cian-vault` для работы с HashiCorp Vault.
+Rust библиотека для работы с HashiCorp Vault.
 
 ## Overview
 

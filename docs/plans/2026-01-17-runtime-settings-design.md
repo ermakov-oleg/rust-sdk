@@ -1,6 +1,6 @@
 # Runtime Settings — Rust Implementation Design
 
-Полная реализация аналога Python cian-settings на Rust.
+Runtime settings библиотека на Rust.
 
 ## Требования
 

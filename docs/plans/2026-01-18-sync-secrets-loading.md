@@ -25,7 +25,7 @@
 Python использует **синхронный HTTP клиент** для Vault:
 
 ```python
-# cian_settings/_secrets/_secrets_service.py:36
+# Python secrets service example
 def get_secret(self, path: str) -> 'Secret':
     if path in self._secrets:
         return self._secrets[path]  # Кэш
