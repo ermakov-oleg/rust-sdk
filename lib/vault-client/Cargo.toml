@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = "0.1"
 vaultrs = "0.7"
 tokio = { version = "1", features = ["sync", "time", "rt", "net"] }
 serde = { version = "1", features = ["derive"] }
