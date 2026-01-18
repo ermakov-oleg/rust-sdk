@@ -41,4 +41,7 @@ pub enum SettingsError {
 
     #[error("Request timed out")]
     Timeout,
+
+    #[error("Missing required configuration: {0}")]
+    MissingConfig(String),
 }

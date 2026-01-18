@@ -7,8 +7,6 @@ use async_trait::async_trait;
 use serde::Serialize;
 use uuid::Uuid;
 
-const DEFAULT_MCS_BASE_URL: &str = "http://localhost:8080";
-
 #[derive(Debug, Serialize)]
 struct McsRequest {
     runtime: String,
@@ -37,11 +35,12 @@ impl McsProvider {
     }
 
     /// Create from environment variables
-    pub fn from_env(application: String) -> Self {
-        let base_url = std::env::var("RUNTIME_SETTINGS_BASE_URL")
-            .unwrap_or_else(|_| DEFAULT_MCS_BASE_URL.to_string());
+    ///
+    /// Returns None if RUNTIME_SETTINGS_BASE_URL is not set.
+    pub fn from_env(application: String) -> Option<Self> {
+        let base_url = std::env::var("RUNTIME_SETTINGS_BASE_URL").ok()?;
         let mcs_run_env = std::env::var("MCS_RUN_ENV").ok();
-        Self::new(base_url, application, mcs_run_env)
+        Some(Self::new(base_url, application, mcs_run_env))
     }
 }
 
