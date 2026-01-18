@@ -118,42 +118,18 @@ impl Setting {
 
     /// Get the setting value with caching by TypeId.
     ///
+    /// If the setting contains secret references, resolves them synchronously
+    /// before deserializing. The first access to a secret is slow (fetches from Vault),
+    /// subsequent accesses use the cached value. Secrets are refreshed in background
+    /// by `RuntimeSettings::refresh()`.
+    ///
     /// On first access, deserializes JSON and stores in cache.
     /// Subsequent calls with the same type return the cached value.
     ///
     /// Note: there is a possible race condition on concurrent cache misses from multiple threads —
     /// both will deserialize and one will overwrite the other. This is safe (values are identical),
     /// just a bit of extra work on first accesses.
-    pub fn get_value<T>(&self) -> Option<Arc<T>>
-    where
-        T: DeserializeOwned + Send + Sync + 'static,
-    {
-        let type_id = TypeId::of::<T>();
-
-        // Check cache
-        if let Some(cached) = self.value_cache.get(&type_id) {
-            let arc_any: Arc<dyn Any + Send + Sync> = Arc::clone(cached.value());
-            return Arc::downcast::<T>(arc_any).ok();
-        }
-
-        // Cache miss — deserialize
-        let value: T = serde_json::from_value(self.value.clone()).ok()?;
-        let arc_value = Arc::new(value);
-
-        // Store in cache
-        self.value_cache.insert(
-            type_id,
-            Arc::clone(&arc_value) as Arc<dyn Any + Send + Sync>,
-        );
-
-        Some(arc_value)
-    }
-
-    /// Get the setting value with secrets resolved.
-    ///
-    /// If the setting contains secret references, resolves them synchronously
-    /// before deserializing. Uses the same TypeId cache as get_value().
-    pub fn get_value_with_secrets<T>(&self, secrets: &SecretsService) -> Option<Arc<T>>
+    pub fn get_value<T>(&self, secrets: &SecretsService) -> Option<Arc<T>>
     where
         T: DeserializeOwned + Send + Sync + 'static,
     {

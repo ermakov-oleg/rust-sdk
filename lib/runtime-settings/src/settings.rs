@@ -208,7 +208,7 @@ impl RuntimeSettings {
                     setting.invalidate_if_stale(self.secrets.version());
                 }
 
-                return setting.get_value_with_secrets::<T>(&self.secrets);
+                return setting.get_value::<T>(&self.secrets);
             }
         }
 
