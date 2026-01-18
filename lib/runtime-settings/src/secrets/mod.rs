@@ -45,7 +45,7 @@ impl SecretsService {
         Self {
             client: None,
             cache: RwLock::new(HashMap::new()),
-            refresh_intervals: Self::default_refresh_intervals(),
+            refresh_intervals: Self::load_refresh_intervals(),
         }
     }
 
@@ -54,7 +54,7 @@ impl SecretsService {
         Self {
             client: Some(client),
             cache: RwLock::new(HashMap::new()),
-            refresh_intervals: Self::default_refresh_intervals(),
+            refresh_intervals: Self::load_refresh_intervals(),
         }
     }
 
@@ -83,6 +83,25 @@ impl SecretsService {
         let mut intervals = HashMap::new();
         intervals.insert("kafka-certificates".to_string(), Duration::from_secs(600));
         intervals.insert("interservice-auth".to_string(), Duration::from_secs(60));
+        intervals
+    }
+
+    fn load_refresh_intervals() -> HashMap<String, Duration> {
+        let mut intervals = Self::default_refresh_intervals();
+
+        if let Ok(json) = std::env::var("STATIC_SECRETS_REFRESH_INTERVALS") {
+            match serde_json::from_str::<HashMap<String, u64>>(&json) {
+                Ok(custom) => {
+                    for (key, secs) in custom {
+                        intervals.insert(key, Duration::from_secs(secs));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Invalid STATIC_SECRETS_REFRESH_INTERVALS format");
+                }
+            }
+        }
+
         intervals
     }
 
