@@ -7,7 +7,6 @@ edition = "2021"
 tracing-core = "0.1"
 tracing-log = { version = "0.2" }
 tracing-appender = "0.2"
-tracing-bunyan-formatter = "0.3"
 tracing = { version = "0.1", default-features = false, features = ["log", "std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "fmt", "env-filter"] }
 
