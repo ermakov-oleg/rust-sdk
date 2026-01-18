@@ -4,7 +4,6 @@
 use crate::error::SettingsError;
 use crate::settings::{RuntimeSettings, RuntimeSettingsBuilder};
 use std::sync::OnceLock;
-use std::time::Duration;
 use tokio::time::sleep;
 
 static SETTINGS: OnceLock<RuntimeSettings> = OnceLock::new();
@@ -19,6 +18,7 @@ pub fn settings() -> &'static RuntimeSettings {
 /// Initialize global settings with builder
 pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError> {
     let runtime_settings = builder.build();
+    let refresh_interval = runtime_settings.refresh_interval;
     runtime_settings.init().await?;
 
     SETTINGS
@@ -26,9 +26,9 @@ pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError>
         .map_err(|_| SettingsError::Vault("Settings already initialized".to_string()))?;
 
     // Start background refresh
-    tokio::spawn(async {
+    tokio::spawn(async move {
         loop {
-            sleep(Duration::from_secs(30)).await;
+            sleep(refresh_interval).await;
             if let Err(e) = settings().refresh().await {
                 tracing::error!("Settings refresh failed: {}", e);
             }

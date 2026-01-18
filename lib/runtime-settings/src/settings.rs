@@ -19,6 +19,7 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 /// Internal state of RuntimeSettings
 struct SettingsState {
@@ -42,6 +43,7 @@ pub struct RuntimeSettings {
     secrets: SecretsService,
     watchers: WatchersService,
     pub(crate) static_context: StaticContext,
+    pub(crate) refresh_interval: Duration,
 }
 
 impl RuntimeSettings {
@@ -286,6 +288,7 @@ pub struct RuntimeSettingsBuilder {
     mcs_base_url: Option<String>,
     file_path: Option<String>,
     env_enabled: bool,
+    refresh_interval: Duration,
 }
 
 impl RuntimeSettingsBuilder {
@@ -305,6 +308,7 @@ impl RuntimeSettingsBuilder {
             mcs_base_url: None,
             file_path: None,
             env_enabled: true,
+            refresh_interval: Duration::from_secs(30),
         }
     }
 
@@ -347,6 +351,12 @@ impl RuntimeSettingsBuilder {
     /// Enable or disable env provider
     pub fn env_enabled(mut self, enabled: bool) -> Self {
         self.env_enabled = enabled;
+        self
+    }
+
+    /// Set the refresh interval for background settings updates
+    pub fn refresh_interval(mut self, interval: Duration) -> Self {
+        self.refresh_interval = interval;
         self
     }
 
@@ -397,6 +407,7 @@ impl RuntimeSettingsBuilder {
             secrets,
             watchers: WatchersService::new(),
             static_context,
+            refresh_interval: self.refresh_interval,
         }
     }
 }
