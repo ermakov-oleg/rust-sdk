@@ -17,7 +17,7 @@ pub fn settings() -> &'static RuntimeSettings {
 
 /// Initialize global settings with builder
 pub async fn setup(builder: RuntimeSettingsBuilder) -> Result<(), SettingsError> {
-    let runtime_settings = builder.build();
+    let runtime_settings = builder.build()?;
     let refresh_interval = runtime_settings.refresh_interval;
     runtime_settings.init().await?;
 

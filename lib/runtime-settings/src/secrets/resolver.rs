@@ -143,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_secret_without_vault() {
         let secrets = SecretsService::new_without_vault();
-        let value = serde_json::json!({"password": {"$secret": "db/creds:password"}});
+        let value = serde_json::json!({"password": {"$secret": "secret/data/db/creds:password"}});
 
         let result = resolve_secrets(&value, &secrets).await;
         assert!(matches!(result, Err(SettingsError::SecretWithoutVault)));

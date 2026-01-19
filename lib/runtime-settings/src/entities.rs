@@ -380,7 +380,7 @@ mod tests {
             filter: HashMap::new(),
             value: serde_json::json!({
                 "host": "localhost",
-                "password": {"$secret": "db/creds:password"}
+                "password": {"$secret": "secret/data/db/creds:password"}
             }),
         };
         let setting = Setting::compile(raw).unwrap();
@@ -412,7 +412,7 @@ mod tests {
             priority: 100,
             filter: HashMap::new(),
             value: serde_json::json!({
-                "password": {"$secret": "db:pass"}
+                "password": {"$secret": "secret/data/db:pass"}
             }),
         };
         let setting = Setting::compile(raw).unwrap();

@@ -103,7 +103,7 @@ async fn main() {
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RUNTIME_SETTINGS_APPLICATION` | Application name for `setup_from_env()` | `"unknown"` |
-| `RUNTIME_SETTINGS_BASE_URL` | MCS service URL | `http://master.runtime-settings.dev3.cian.ru` |
+| `RUNTIME_SETTINGS_BASE_URL` | MCS service URL | Required when MCS enabled |
 | `RUNTIME_SETTINGS_FILE_PATH` | Path to settings JSON file | `runtime-settings.json` |
 | `MCS_RUN_ENV` | MCS environment filter value | None |
 | `VAULT_ADDR` | Vault server address | Required for secrets |
@@ -135,7 +135,7 @@ Settings are stored as a JSON array. JSON5 format with comments is supported:
   {
     // Setting with secret reference
     "key": "API_SECRET",
-    "value": {"$secret": "secret/api:key"},
+    "value": {"$secret": "secret/data/api:key"},
     "priority": 100
   },
   {
@@ -144,7 +144,7 @@ Settings are stored as a JSON array. JSON5 format with comments is supported:
     "value": {
       "host": "localhost",
       "port": 5432,
-      "password": {"$secret": "database/prod:password"}
+      "password": {"$secret": "secret/data/database/prod:password"}
     },
     "priority": 100
   }
@@ -414,18 +414,18 @@ Vault is automatically configured when these variables are present. If not confi
 
 ### Secret Reference Syntax
 
-Use `{"$secret": "path:key"}` in setting values:
+Use `{"$secret": "full_vault_path:key"}` in setting values:
 
 ```json
 {
   "key": "DB_PASSWORD",
-  "value": {"$secret": "database/prod:password"}
+  "value": {"$secret": "secret/data/database/prod:password"}
 }
 ```
 
-Format: `vault_path:key_in_secret`
+Format: `full_vault_path:key_in_secret`
 
-- `path`: Vault KV v2 path (e.g., `database/prod`)
+- `full_vault_path`: Full Vault KV v2 path including mount and `/data/` (e.g., `secret/data/database/prod`)
 - `key`: Key within the secret data (e.g., `password`)
 
 Secrets can be nested in complex values:
@@ -438,7 +438,7 @@ Secrets can be nested in complex values:
     "port": 5432,
     "credentials": {
       "username": "app",
-      "password": {"$secret": "database/prod:password"}
+      "password": {"$secret": "secret/data/database/prod:password"}
     }
   }
 }

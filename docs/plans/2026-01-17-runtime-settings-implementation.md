@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Rewrite runtime-settings library with full Python cian-settings parity (except Consul and FakeSettings).
+**Goal:** Rewrite runtime-settings library with full feature parity (except Consul and FakeSettings).
 
 **Architecture:** Provider-based settings loading (env, file, MCS) with 12-filter system (static + dynamic), Vault integration for secrets, watchers for change notifications, and thread-local/task-local scoped contexts.
 
@@ -996,9 +996,9 @@ mod tests {
     fn test_email_filter_match() {
         let filter = EmailFilter;
         let mut headers = HashMap::new();
-        headers.insert("x-real-email".to_string(), "user@cian.ru".to_string());
+        headers.insert("x-real-email".to_string(), "user@example.com".to_string());
         let ctx = make_ctx_with_request("/", headers);
-        assert_eq!(filter.check(".*@cian\\.ru", &ctx), FilterResult::Match);
+        assert_eq!(filter.check(".*@example\\.com", &ctx), FilterResult::Match);
     }
 
     #[test]
@@ -2031,7 +2031,7 @@ use crate::error::SettingsError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_MCS_BASE_URL: &str = "http://master.runtime-settings.dev3.cian.ru";
+const DEFAULT_MCS_BASE_URL: &str = "http://localhost:8080";
 
 #[derive(Debug, Serialize)]
 struct McsRequest {
@@ -3224,7 +3224,7 @@ impl RuntimeSettingsBuilder {
         if self.mcs_enabled {
             let base_url = self.mcs_base_url.unwrap_or_else(|| {
                 std::env::var("RUNTIME_SETTINGS_BASE_URL")
-                    .unwrap_or_else(|_| "http://master.runtime-settings.dev3.cian.ru".to_string())
+                    .unwrap_or_else(|_| "http://localhost:8080".to_string())
             });
             providers.push(Box::new(McsProvider::new(
                 base_url,

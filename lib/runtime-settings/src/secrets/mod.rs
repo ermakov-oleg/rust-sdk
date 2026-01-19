@@ -14,7 +14,7 @@ pub enum JsonPathKey {
 /// Information about a single secret usage in a setting value
 #[derive(Debug, Clone)]
 pub struct SecretUsage {
-    /// Vault path: "db/creds"
+    /// Full Vault path including mount and `/data/`: "secret/data/db/creds"
     pub path: String,
     /// Key within the secret: "password"
     pub key: String,
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use vaultrs::client::{VaultClient, VaultClientSettingsBuilder};
+use vault_client::VaultClient;
 
 pub use resolver::{resolve_secrets, resolve_secrets_sync};
 
@@ -141,27 +141,6 @@ impl SecretsService {
         self.version.load(Ordering::Acquire)
     }
 
-    /// Create Vault client from environment
-    pub fn from_env() -> Result<Self, SettingsError> {
-        let address =
-            std::env::var("VAULT_ADDR").unwrap_or_else(|_| "http://127.0.0.1:8200".to_string());
-        let token = std::env::var("VAULT_TOKEN").ok();
-
-        if token.is_none() {
-            return Ok(Self::new_without_vault());
-        }
-
-        let settings = VaultClientSettingsBuilder::default()
-            .address(&address)
-            .token(token.unwrap())
-            .build()
-            .map_err(|e| SettingsError::Vault(e.to_string()))?;
-
-        let client = VaultClient::new(settings).map_err(|e| SettingsError::Vault(e.to_string()))?;
-
-        Ok(Self::new(client))
-    }
-
     fn default_refresh_intervals() -> HashMap<String, Duration> {
         let mut intervals = HashMap::new();
         intervals.insert("kafka-certificates".to_string(), Duration::from_secs(600));
@@ -205,9 +184,14 @@ impl SecretsService {
             }
         }
 
-        // Fetch from Vault
-        let secret: serde_json::Value = vaultrs::kv2::read(client, "secret", path)
+        // Fetch from Vault using vault-client
+        let kv_data = client
+            .kv_read_raw(path)
             .await
+            .map_err(|e| SettingsError::Vault(e.to_string()))?;
+
+        // Convert HashMap to Value for caching
+        let secret: serde_json::Value = serde_json::to_value(&kv_data.data)
             .map_err(|e| SettingsError::Vault(e.to_string()))?;
 
         // Cache it
@@ -293,8 +277,15 @@ impl SecretsService {
         let mut any_changed = false;
 
         for path in paths_to_refresh {
-            match vaultrs::kv2::read::<serde_json::Value>(client, "secret", &path).await {
-                Ok(new_value) => {
+            match client.kv_read_raw(&path).await {
+                Ok(kv_data) => {
+                    let new_value: serde_json::Value = match serde_json::to_value(&kv_data.data) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!(path = %path, error = %e, "Failed to convert secret data");
+                            continue;
+                        }
+                    };
                     let changed = self.update_cached_secret(&path, new_value).await;
                     if changed {
                         any_changed = true;
@@ -355,11 +346,11 @@ mod tests {
     fn test_find_secret_usages_single_secret() {
         let value = serde_json::json!({
             "host": "localhost",
-            "password": {"$secret": "db/creds:password"}
+            "password": {"$secret": "secret/data/db/creds:password"}
         });
         let usages = find_secret_usages(&value).unwrap();
         assert_eq!(usages.len(), 1);
-        assert_eq!(usages[0].path, "db/creds");
+        assert_eq!(usages[0].path, "secret/data/db/creds");
         assert_eq!(usages[0].key, "password");
         assert_eq!(usages[0].value_path, vec![JsonPathKey::Field("password".to_string())]);
     }
@@ -369,13 +360,13 @@ mod tests {
         let value = serde_json::json!({
             "database": {
                 "connection": {
-                    "password": {"$secret": "db/creds:password"}
+                    "password": {"$secret": "secret/data/db/creds:password"}
                 }
             }
         });
         let usages = find_secret_usages(&value).unwrap();
         assert_eq!(usages.len(), 1);
-        assert_eq!(usages[0].path, "db/creds");
+        assert_eq!(usages[0].path, "secret/data/db/creds");
         assert_eq!(usages[0].key, "password");
         assert_eq!(usages[0].value_path, vec![
             JsonPathKey::Field("database".to_string()),
@@ -388,14 +379,14 @@ mod tests {
     fn test_find_secret_usages_in_array() {
         let value = serde_json::json!({
             "servers": [
-                {"host": "server1", "password": {"$secret": "servers/1:pass"}},
-                {"host": "server2", "password": {"$secret": "servers/2:pass"}}
+                {"host": "server1", "password": {"$secret": "secret/data/servers/1:pass"}},
+                {"host": "server2", "password": {"$secret": "secret/data/servers/2:pass"}}
             ]
         });
         let usages = find_secret_usages(&value).unwrap();
         assert_eq!(usages.len(), 2);
-        assert_eq!(usages[0].path, "servers/1");
-        assert_eq!(usages[1].path, "servers/2");
+        assert_eq!(usages[0].path, "secret/data/servers/1");
+        assert_eq!(usages[1].path, "secret/data/servers/2");
     }
 
     #[test]

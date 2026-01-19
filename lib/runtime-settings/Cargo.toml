@@ -21,7 +21,7 @@ reqwest = { version = "0.13", features = ["json", "query"] }
 json5 = "1"
 
 # Vault
-vaultrs = "0.7"
+vault-client = { path = "../vault-client" }
 
 # Utilities
 futures = "0.3"

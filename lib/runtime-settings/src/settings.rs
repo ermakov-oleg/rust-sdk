@@ -15,6 +15,7 @@ use crate::scoped::{
 use crate::secrets::SecretsService;
 use crate::watchers::{Watcher, WatcherId, WatchersService};
 use semver::Version;
+use vault_client::VaultClient;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -297,6 +298,7 @@ pub struct RuntimeSettingsBuilder {
     file_path: Option<String>,
     env_enabled: bool,
     refresh_interval: Duration,
+    vault_client: Option<VaultClient>,
 }
 
 impl RuntimeSettingsBuilder {
@@ -317,6 +319,7 @@ impl RuntimeSettingsBuilder {
             file_path: None,
             env_enabled: true,
             refresh_interval: Duration::from_secs(30),
+            vault_client: None,
         }
     }
 
@@ -368,8 +371,14 @@ impl RuntimeSettingsBuilder {
         self
     }
 
+    /// Set VaultClient for secrets
+    pub fn vault_client(mut self, client: VaultClient) -> Self {
+        self.vault_client = Some(client);
+        self
+    }
+
     /// Build the RuntimeSettings instance
-    pub fn build(self) -> RuntimeSettings {
+    pub fn build(self) -> Result<RuntimeSettings, SettingsError> {
         let mut providers: Vec<Box<dyn SettingsProvider>> = Vec::new();
 
         // Add env provider first (lowest priority)
@@ -384,12 +393,12 @@ impl RuntimeSettingsBuilder {
 
         // Add MCS provider last (to get the latest settings)
         if self.mcs_enabled {
-            let base_url = self.mcs_base_url.unwrap_or_else(|| {
-                self.environment
-                    .get("RUNTIME_SETTINGS_BASE_URL")
-                    .cloned()
-                    .unwrap_or_else(|| "http://master.runtime-settings.dev3.cian.ru".to_string())
+            let base_url = self.mcs_base_url.or_else(|| {
+                self.environment.get("RUNTIME_SETTINGS_BASE_URL").cloned()
             });
+            let base_url = base_url.ok_or_else(|| {
+                SettingsError::MissingConfig("RUNTIME_SETTINGS_BASE_URL".to_string())
+            })?;
             providers.push(Box::new(McsProvider::new(
                 base_url,
                 self.application.clone(),
@@ -405,18 +414,20 @@ impl RuntimeSettingsBuilder {
             mcs_run_env: self.mcs_run_env,
         };
 
-        // Try to create secrets service from env, fallback to no vault
-        let secrets =
-            SecretsService::from_env().unwrap_or_else(|_| SecretsService::new_without_vault());
+        // Create secrets service with vault client if provided
+        let secrets = match self.vault_client {
+            Some(client) => SecretsService::new(client),
+            None => SecretsService::new_without_vault(),
+        };
 
-        RuntimeSettings {
+        Ok(RuntimeSettings {
             providers,
             state: RwLock::new(SettingsState::default()),
             secrets,
             watchers: WatchersService::new(),
             static_context,
             refresh_interval: self.refresh_interval,
-        }
+        })
     }
 }
 
@@ -439,7 +450,8 @@ mod tests {
             .server("test-server")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(settings.static_context.application, "test-app");
         assert_eq!(settings.static_context.server, "test-server");
@@ -453,7 +465,8 @@ mod tests {
             .library_version("my-lib", version.clone())
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(
             settings.static_context.libraries_versions.get("my-lib"),
@@ -467,7 +480,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         // Should not panic, just return None since no settings loaded
         let result: Option<Arc<String>> = settings.get("SOME_KEY");
@@ -480,7 +494,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         let req = Request {
             method: "GET".to_string(),
@@ -501,7 +516,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         let response = ProviderResponse {
             settings: vec![RawSetting {
@@ -532,7 +548,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         // Add low priority setting
         let response1 = ProviderResponse {
@@ -573,7 +590,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         // Add settings with different priorities
         let response = ProviderResponse {
@@ -609,7 +627,8 @@ mod tests {
                 .application("test-app")
                 .mcs_enabled(false)
                 .env_enabled(false)
-                .build(),
+                .build()
+                .unwrap(),
         );
 
         // Add a setting
@@ -648,7 +667,8 @@ mod tests {
                 .application("test-app")
                 .mcs_enabled(false)
                 .env_enabled(false)
-                .build(),
+                .build()
+                .unwrap(),
         );
 
         // Add a setting
@@ -690,7 +710,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(true) // Enable env provider
-            .build();
+            .build()
+            .unwrap();
 
         // This should not fail even if file doesn't exist
         let result = settings.init().await;
@@ -703,7 +724,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         // Should return default since key doesn't exist (no context needed now)
         let result: Arc<String> = settings.get_or("NONEXISTENT_KEY", "default_value".to_string());
@@ -716,7 +738,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         let custom: HashMap<String, String> =
             [("test_key".to_string(), "test_value".to_string())].into();
@@ -739,7 +762,8 @@ mod tests {
             .application("test-app")
             .mcs_enabled(false)
             .env_enabled(false)
-            .build();
+            .build()
+            .unwrap();
 
         // With no providers, refresh should complete instantly
         let result = settings.refresh_with_timeout(Duration::from_secs(1)).await;
