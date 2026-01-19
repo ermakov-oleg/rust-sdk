@@ -60,9 +60,9 @@ async fn test_vault_get_secret() {
     // Create SecretsService with that client
     let secrets_service = SecretsService::new(client);
 
-    // Verify get("database/credentials", "password") returns the value
+    // Verify get("secret/data/database/credentials", "password") returns the value
     let password = secrets_service
-        .get("database/credentials", "password")
+        .get("secret/data/database/credentials", "password")
         .await
         .expect("should get password");
 
@@ -70,7 +70,7 @@ async fn test_vault_get_secret() {
 
     // Also verify username
     let username = secrets_service
-        .get("database/credentials", "username")
+        .get("secret/data/database/credentials", "username")
         .await
         .expect("should get username");
 
@@ -99,7 +99,7 @@ async fn test_vault_secret_caching() {
 
     // First call - should hit the mock
     let value1 = secrets_service
-        .get("cached/secret", "api_key")
+        .get("secret/data/cached/secret", "api_key")
         .await
         .expect("should get value on first call");
 
@@ -107,7 +107,7 @@ async fn test_vault_secret_caching() {
 
     // Second call - should use cache (mock expects only 1 call)
     let value2 = secrets_service
-        .get("cached/secret", "api_key")
+        .get("secret/data/cached/secret", "api_key")
         .await
         .expect("should get value on second call from cache");
 
@@ -134,7 +134,7 @@ async fn test_vault_secret_not_found() {
     let secrets_service = SecretsService::new(client);
 
     // Verify get() returns error
-    let result = secrets_service.get("nonexistent/path", "key").await;
+    let result = secrets_service.get("secret/data/nonexistent/path", "key").await;
 
     assert!(result.is_err(), "should return error for 404");
     let err = result.unwrap_err();
@@ -167,7 +167,7 @@ async fn test_vault_key_not_found_in_secret() {
     let secrets_service = SecretsService::new(client);
 
     // Try to get non-existent key
-    let result = secrets_service.get("app/config", "nonexistent_key").await;
+    let result = secrets_service.get("secret/data/app/config", "nonexistent_key").await;
 
     // Verify get() returns error
     assert!(result.is_err(), "should return error for missing key");
@@ -191,7 +191,7 @@ async fn test_secrets_without_vault() {
     let secrets_service = SecretsService::new_without_vault();
 
     // Verify get() returns error
-    let result = secrets_service.get("any/path", "any_key").await;
+    let result = secrets_service.get("secret/data/any/path", "any_key").await;
 
     assert!(result.is_err(), "should return error without vault");
     let err = result.unwrap_err();

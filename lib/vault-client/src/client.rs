@@ -191,8 +191,19 @@ impl VaultClient {
         VaultClientBuilder::new()
     }
 
+    /// Read a KV2 secret using mount and path separately.
+    ///
+    /// Example: `kv_read("secret", "database/creds")` reads from `/v1/secret/data/database/creds`
     pub async fn kv_read(&self, mount: &str, path: &str) -> Result<KvData, VaultError> {
-        let url = format!("{}/v1/{}/data/{}", self.base_url, mount, path);
+        let full_path = format!("{}/data/{}", mount, path);
+        self.kv_read_raw(&full_path).await
+    }
+
+    /// Read a KV2 secret using full path (including mount and `/data/`).
+    ///
+    /// Example: `kv_read_raw("secret/data/database/creds")` reads from `/v1/secret/data/database/creds`
+    pub async fn kv_read_raw(&self, full_path: &str) -> Result<KvData, VaultError> {
+        let url = format!("{}/v1/{}", self.base_url, full_path);
         let token = self.token_manager.get_token().await;
 
         let client = reqwest::Client::new();
@@ -209,7 +220,7 @@ impl VaultClient {
 
         if response.status().as_u16() == 404 {
             return Err(VaultError::SecretNotFound {
-                path: path.to_string(),
+                path: full_path.to_string(),
             });
         }
 
